@@ -254,6 +254,64 @@ def calculate_nbr(
     return nbr
 
 
+def calculate_ndbi(
+    ds: xr.Dataset,
+    valid_mask: Optional[Union[xr.DataArray, np.ndarray]] = None,
+    b11: Optional[Union[xr.DataArray, np.ndarray]] = None,
+    clamp: bool = True,
+    eps: float = DEFAULT_EPSILON,
+) -> xr.DataArray:
+    """Calculate the Normalized Difference Built-Up / Bare Soil Index (NDBI).
+
+    Formula: (B11 - B08) / (B11 + B08 + 1e-6)
+    Automatically resamples or aligns band B11 (SWIR1, native 20m) to match the B08 (10m) grid.
+    Positive NDBI values signify bare soil, built-up surfaces, or cleared ground,
+    while negative values signify healthy green vegetation.
+
+    Args:
+        ds: xarray.Dataset containing SWIR1 (B11) and NIR (B08) bands.
+        valid_mask: Optional boolean mask where True indicates valid clean pixels.
+                    If None and 'valid_mask' exists in ds, it will be automatically applied.
+        b11: Optional explicit B11 DataArray or ndarray (if stored outside ds or in 20m resolution).
+        clamp: Whether to clamp output strictly to [-1.0, 1.0] (default: True).
+        eps: Small constant added to denominator to avoid division by zero (default: 1e-6).
+
+    Returns:
+        xarray.DataArray representing NDBI with values strictly clamped between -1.0 and +1.0.
+    """
+    b08 = _get_band(ds, "B08", "b08", "nir").astype("float32")
+    if b11 is None:
+        b11_da = _get_band(ds, "B11", "b11", "swir1", "swir").astype("float32")
+    elif isinstance(b11, xr.DataArray):
+        b11_da = b11.astype("float32")
+    else:
+        b11_da = xr.DataArray(b11).astype("float32")
+
+    b11_aligned = align_to_grid(b11_da, b08)
+
+    numerator = b11_aligned - b08
+    denominator = b11_aligned + b08 + eps
+    ndbi = numerator / denominator
+
+    # Apply validity mask if provided or present in dataset
+    if valid_mask is not None:
+        ndbi = ndbi.where(valid_mask, np.nan)
+    elif "valid_mask" in ds:
+        ndbi = ndbi.where(ds["valid_mask"], np.nan)
+
+    if clamp:
+        ndbi = ndbi.clip(min=-1.0, max=1.0)
+
+    ndbi.name = "ndbi"
+    ndbi.attrs = {
+        "long_name": "Normalized Difference Built-Up Index",
+        "units": "1",
+        "formula": "(B11 - B08) / (B11 + B08 + 1e-6)",
+        "valid_range": [-1.0, 1.0],
+    }
+    return ndbi
+
+
 def calculate_dnbr(
     pre: Union[xr.Dataset, xr.DataArray],
     post: Union[xr.Dataset, xr.DataArray],

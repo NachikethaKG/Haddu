@@ -9,6 +9,7 @@ from haddu.core.indices import (
     calculate_ndvi,
     calculate_ndre,
     calculate_nbr,
+    calculate_ndbi,
     calculate_dnbr,
 )
 from haddu.core.masking import create_valid_mask
@@ -52,6 +53,14 @@ def synthetic_spectra_dataset():
         [1450.0, 1600.0, 1480.0, 1500.0],
     ], dtype=np.float32)
 
+    # B11 (SWIR1 - 10m resampled grid)
+    b11_data = np.array([
+        [1200.0, 100.0, 1300.0, 1250.0],
+        [3200.0, 50.0, 3100.0, 3150.0],
+        [1150.0, 120.0, 1280.0, 1220.0],
+        [3100.0, 1400.0, 3050.0, 3200.0],
+    ], dtype=np.float32)
+
     # B12 (SWIR2 - 10m resampled grid)
     b12_data = np.array([
         [350.0, 150.0, 380.0, 360.0],
@@ -73,6 +82,7 @@ def synthetic_spectra_dataset():
             "B08": (["y", "x"], b08_data),
             "B04": (["y", "x"], b04_data),
             "B05": (["y", "x"], b05_data),
+            "B11": (["y", "x"], b11_data),
             "B12": (["y", "x"], b12_data),
             "SCL": (["y", "x"], scl_data),
         },
@@ -173,6 +183,23 @@ def test_calculate_nbr_and_dnbr(synthetic_spectra_dataset):
     # Pixel (1, 1) had no change -> dNBR near 0
     unchanged_dnbr = float(dnbr.values[1, 1])
     assert abs(unchanged_dnbr) < 0.01
+
+
+def test_calculate_ndbi_bare_soil_and_forest(synthetic_spectra_dataset):
+    """Verify NDBI returns positive for bare soil and negative for dense forest."""
+    ds = synthetic_spectra_dataset
+    ndbi = calculate_ndbi(ds)
+
+    assert isinstance(ndbi, xr.DataArray)
+    assert ndbi.name == "ndbi"
+
+    # Pixel (0, 0): Forest (B11=1200, B08=5000) -> (1200 - 5000) / 6200 = -3800 / 6200 ~= -0.613
+    forest_ndbi = float(ndbi.values[0, 0])
+    assert forest_ndbi < 0.0, f"Expected negative NDBI for forest, got {forest_ndbi}"
+
+    # Pixel (1, 0): Bare soil (B11=3200, B08=1500) -> (3200 - 1500) / 4700 = 1700 / 4700 ~= +0.362
+    bare_ndbi = float(ndbi.values[1, 0])
+    assert bare_ndbi > 0.0, f"Expected positive NDBI for bare soil, got {bare_ndbi}"
 
 
 def test_indices_valid_mask_application(synthetic_spectra_dataset):

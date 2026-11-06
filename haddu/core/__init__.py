@@ -31,6 +31,7 @@ from haddu.core.indices import (
     calculate_ndvi,
     calculate_ndre,
     calculate_nbr,
+    calculate_ndbi,
     calculate_dnbr,
 )
 from haddu.core.change_detector import (
@@ -46,6 +47,11 @@ from haddu.core.vectorizer import (
     DEFAULT_TARGET_CRS,
     extract_affine_transform,
     vectorize_change_mask,
+)
+from haddu.core.timeseries import (
+    DEFAULT_CUBE_BANDS,
+    format_date_str,
+    build_timeseries_cube,
 )
 
 __all__ = [
@@ -73,6 +79,7 @@ __all__ = [
     "calculate_ndvi",
     "calculate_ndre",
     "calculate_nbr",
+    "calculate_ndbi",
     "calculate_dnbr",
     "DEFAULT_NDVI_THRESHOLD",
     "DEFAULT_MIN_AREA_SQM",
@@ -84,4 +91,7 @@ __all__ = [
     "DEFAULT_TARGET_CRS",
     "extract_affine_transform",
     "vectorize_change_mask",
+    "DEFAULT_CUBE_BANDS",
+    "format_date_str",
+    "build_timeseries_cube",
 ]
