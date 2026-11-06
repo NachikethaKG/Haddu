@@ -42,11 +42,15 @@ Haddu/
 │   ├── core/                 # STAC catalog query, windowed loader, transforms
 │   │   └── __init__.py
 │   ├── db/                   # SQLAlchemy models, sessions, spatial migrations
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   ├── models.py         # AOI and SatellitePass PostGIS models
+│   │   └── session.py        # Connection engine, sessionmaker, and init_db
 │   └── scripts/              # CLI scripts and entrypoints
-│       └── __init__.py
+│       ├── __init__.py
+│       └── seed_aoi.py       # Migrations and AOI seeding script
 └── tests/
     ├── __init__.py
+    ├── test_db_models.py     # Database models, geometry, and seeding tests
     └── test_scaffolding.py   # Basic scaffolding and structure test suite
 ```
 
@@ -95,8 +99,22 @@ The database is exposed on `localhost:5432`:
 - **Password:** `haddu_secret`
 - **Connection URI:** `postgresql+psycopg2://haddu:haddu_secret@localhost:5432/haddu_db`
 
-### 5. Run Tests
-Verify repository installation and structure:
+### 5. Seed Spatial AOIs & Apply Migrations
+Apply database DDL migrations and seed the Thirthahalli bounding box and reserve forest corridors:
+```bash
+python -m haddu.scripts.seed_aoi
+```
+This registers the AOIs and executes a verification query calculating the polygon area in meters via `ST_Transform(geom, 32643)`:
+```text
+PostGIS Verification Query Successful:
+  AOI Name        : Thirthahalli Taluk
+  Category        : Taluk
+  Target CRS      : EPSG:32643 (UTM Zone 43N)
+  Projected Area  : 1,255,640,731.29 m² (~1,255.64 km²)
+```
+
+### 6. Run Tests
+Verify repository installation, models, and structure:
 ```bash
 pytest
 ```
