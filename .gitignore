@@ -1,0 +1,82 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+credentials.json
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing and coverage
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+
+# GIS & Raster temporary and binary data files
+*.tif
+*.tiff
+*.vrt
+*.nc
+*.nc4
+*.h5
+*.hdf5
+*.asc
+*.img
+*.grd
+*.gpkg-journal
+*.qix
+
+# Local data & outputs
+data/*
+!data/.gitkeep
+output/
+*.png
+*.jpg
+*.jpeg
+
+# Operating System files
+.DS_Store
+Thumbs.db
+desktop.ini
