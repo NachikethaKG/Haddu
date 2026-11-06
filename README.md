@@ -49,9 +49,11 @@ Haddu/
 │   │   └── session.py        # Connection engine, sessionmaker, and init_db
 │   └── scripts/              # CLI scripts and entrypoints
 │       ├── __init__.py
+│       ├── fetch_pass.py     # Sentinel-2 pass fetcher & RGB composite exporter
 │       └── seed_aoi.py       # Migrations and AOI seeding script
 └── tests/
     ├── __init__.py
+    ├── test_cli_fetch_pass.py # CLI pipeline & SCL masking tests
     ├── test_db_models.py     # Database models, geometry, and seeding tests
     ├── test_scaffolding.py   # Basic scaffolding and structure test suite
     └── test_stac_loader.py   # STAC query and low-memory ingestion tests
@@ -116,8 +118,24 @@ PostGIS Verification Query Successful:
   Projected Area  : 1,255,640,731.29 m² (~1,255.64 km²)
 ```
 
-### 6. Run Tests
-Verify repository installation, models, and structure:
+### 6. Fetch Sentinel-2 Pass & Generate Visual Preview
+Fetch a cloud-free pass over Thirthahalli, evaluate the Scene Classification Layer (SCL) cloud mask, save a true-color RGB composite image to `./output`, and record metadata into PostGIS:
+```bash
+python -m haddu.scripts.fetch_pass --start-date 2026-01-01 --end-date 2026-02-15
+```
+Example output:
+```text
+13:13:17 [INFO] Querying Microsoft Planetary Computer STAC catalog...
+13:13:20 [INFO] Selected pass  : S2B_MSIL2A_20260204T051919_R062_T43PER_20260204T090926
+13:13:20 [INFO] Streaming windowed bands via HTTP byte-range requests...
+13:13:47 [INFO] Stream and projection complete in 27.30s
+13:13:47 [INFO] SCL Evaluation : 100.00% valid cloud-free pixels (3,145,934/3,145,934)
+13:13:48 [INFO] Preview Image  : Saved composite to output/thirthahalli_rgb_2026-02-04.png
+13:13:48 [INFO] Pipeline Completed in 30.75 seconds.
+```
+
+### 7. Run Tests
+Verify repository installation, models, STAC client, and CLI pipeline:
 ```bash
 pytest
 ```
