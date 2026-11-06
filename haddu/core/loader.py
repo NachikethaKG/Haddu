@@ -20,6 +20,7 @@ DEFAULT_TARGET_BANDS = [
     "B02",  # Blue (10m)
     "B03",  # Green (10m)
     "B04",  # Red (10m)
+    "B05",  # RedEdge 1 (20m -> resampled to 10m)
     "B08",  # NIR (10m)
     "B11",  # SWIR1 (20m -> resampled to 10m)
     "B12",  # SWIR2 (20m -> resampled to 10m)
