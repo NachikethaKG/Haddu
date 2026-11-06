@@ -62,6 +62,14 @@ from haddu.core.harmonic import (
     HarmonicModel,
     fit_harmonic_baseline,
 )
+from haddu.core.persistence import (
+    DEFAULT_CONSECUTIVE_PASSES,
+    DEFAULT_Z_THRESHOLD,
+    DEFAULT_NDBI_THRESHOLD,
+    DEFAULT_FOREST_NDBI_BASELINE,
+    PersistentBreakResult,
+    detect_persistent_breaks,
+)
 
 __all__ = [
     "PLANETARY_COMPUTER_STAC_URL",
@@ -110,4 +118,10 @@ __all__ = [
     "construct_harmonic_design_matrix",
     "HarmonicModel",
     "fit_harmonic_baseline",
+    "DEFAULT_CONSECUTIVE_PASSES",
+    "DEFAULT_Z_THRESHOLD",
+    "DEFAULT_NDBI_THRESHOLD",
+    "DEFAULT_FOREST_NDBI_BASELINE",
+    "PersistentBreakResult",
+    "detect_persistent_breaks",
 ]
