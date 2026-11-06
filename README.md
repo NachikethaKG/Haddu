@@ -40,7 +40,9 @@ Haddu/
 ├── haddu/
 │   ├── __init__.py           # Package version and metadata
 │   ├── core/                 # STAC catalog query, windowed loader, transforms
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   ├── loader.py         # Windowed odc-stac raster ingestion engine
+│   │   └── stac_client.py    # Microsoft Planetary Computer STAC client
 │   ├── db/                   # SQLAlchemy models, sessions, spatial migrations
 │   │   ├── __init__.py
 │   │   ├── models.py         # AOI and SatellitePass PostGIS models
@@ -51,7 +53,8 @@ Haddu/
 └── tests/
     ├── __init__.py
     ├── test_db_models.py     # Database models, geometry, and seeding tests
-    └── test_scaffolding.py   # Basic scaffolding and structure test suite
+    ├── test_scaffolding.py   # Basic scaffolding and structure test suite
+    └── test_stac_loader.py   # STAC query and low-memory ingestion tests
 ```
 
 ---

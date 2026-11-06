@@ -53,3 +53,6 @@ include = ["haddu*"]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
+markers = [
+    "integration: integration tests requiring network access to STAC catalogs",
+]
