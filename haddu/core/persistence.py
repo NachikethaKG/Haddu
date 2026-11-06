@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 import logging
 import math
+from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -478,3 +479,185 @@ def detect_persistent_breaks(
         patch_metrics=patch_metrics_list,
         attrs=result_attrs,
     )
+
+
+def plot_pixel_profile(
+    cube: xr.Dataset,
+    harmonic_model: HarmonicModel,
+    y: float,
+    x: float,
+    break_date: Optional[Union[str, date, datetime, pd.Timestamp, np.datetime64]] = None,
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    z_threshold: float = DEFAULT_Z_THRESHOLD,
+    output_path: Optional[Union[str, Path]] = None,
+    dpi: int = 150,
+) -> Path:
+    """Generate time-series verification plot showing historical NDVI, harmonic curve, and breakpoint.
+
+    Renders and saves a verification chart showing:
+    1. Observed Sentinel-2 NDVI observations over time.
+    2. Continuous fitted seasonal Fourier curve.
+    3. Lower anomaly threshold envelope (hat{y} - z_threshold * sigma).
+    4. Vertical marker at confirmed inception breakpoint date where canopy loss began.
+
+    Args:
+        cube: Timeseries Dataset containing 'ndvi' and 'time'.
+        harmonic_model: Fitted HarmonicModel instance.
+        y: Spatial y-coordinate in native CRS (or nearest index).
+        x: Spatial x-coordinate in native CRS (or nearest index).
+        break_date: Inception break date to draw vertical reference line.
+        lat: Optional WGS84 latitude for plot title / filename.
+        lon: Optional WGS84 longitude for plot title / filename.
+        z_threshold: Anomaly threshold envelope factor (default: 2.5).
+        output_path: Destination PNG file path.
+        dpi: Resolution of exported figure (default: 150).
+
+    Returns:
+        Path to saved PNG file.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    # 1. Extract 1D NDVI observation time series for this pixel
+    pixel_ndvi = cube["ndvi"].sel(y=y, x=x, method="nearest")
+    times = pd.to_datetime(pixel_ndvi.time.values)
+    values = pixel_ndvi.values
+    valid_mask = ~np.isnan(values)
+
+    # 2. Dense continuous timeline for smooth harmonic prediction curve
+    min_date = times.min()
+    max_date = times.max()
+    dense_dates = pd.date_range(min_date, max_date, periods=250)
+
+    # Evaluate harmonic model at dense timestamps for this pixel
+    pred_da = harmonic_model.predict(dense_dates)
+    pixel_pred = pred_da.sel(y=y, x=x, method="nearest").values
+
+    # Pixel sigma
+    sigma_val = float(harmonic_model.sigma.sel(y=y, x=x, method="nearest").values)
+    safe_sigma = max(sigma_val, DEFAULT_MIN_SIGMA)
+    envelope_lower = pixel_pred - z_threshold * safe_sigma
+
+    # 3. Create figure
+    fig, ax = plt.subplots(figsize=(10, 5), dpi=dpi)
+
+    # Plot continuous baseline and envelope
+    ax.plot(
+        dense_dates,
+        pixel_pred,
+        color="#27ae60",
+        linewidth=2.0,
+        label="Fitted Seasonal Baseline (Fourier OLS)",
+        zorder=3,
+    )
+    ax.plot(
+        dense_dates,
+        envelope_lower,
+        color="#e67e22",
+        linestyle="--",
+        linewidth=1.5,
+        label=f"Anomaly Threshold Envelope (-{z_threshold}σ)",
+        zorder=3,
+    )
+
+    # Shaded envelope region
+    ax.fill_between(
+        dense_dates,
+        envelope_lower,
+        pixel_pred,
+        color="#27ae60",
+        alpha=0.10,
+        label="Seasonal Canopy Normal Range",
+    )
+
+    # Plot observed NDVI data points
+    ax.scatter(
+        times[valid_mask],
+        values[valid_mask],
+        color="#2c3e50",
+        s=35,
+        edgecolors="white",
+        linewidths=0.8,
+        label="Observed Sentinel-2 NDVI",
+        zorder=5,
+    )
+
+    # Plot invalid/cloud masked observations if present
+    if np.any(~valid_mask):
+        ax.scatter(
+            times[~valid_mask],
+            np.zeros(np.count_nonzero(~valid_mask)),
+            color="#95a5a6",
+            s=20,
+            marker="x",
+            label="Cloud / Masked Pass",
+            zorder=4,
+        )
+
+    # Plot breakpoint line if present
+    if break_date is not None and not pd.isna(break_date):
+        b_ts = pd.Timestamp(break_date)
+        b_str = b_ts.strftime("%Y-%m-%d")
+        ax.axvline(
+            b_ts,
+            color="#c0392b",
+            linestyle="--",
+            linewidth=2.0,
+            label=f"Inception Breakpoint ({b_str})",
+            zorder=6,
+        )
+
+        # Highlight anomalous post-break observations
+        post_break_idx = valid_mask & (times >= b_ts)
+        if np.any(post_break_idx):
+            ax.scatter(
+                times[post_break_idx],
+                values[post_break_idx],
+                color="#e74c3c",
+                s=55,
+                edgecolors="black",
+                linewidths=1.2,
+                label="Confirmed Persistent Loss",
+                zorder=7,
+            )
+
+    # Labels and titles
+    loc_str = ""
+    if lat is not None and lon is not None:
+        loc_str = f" ({lat:.5f}°N, {lon:.5f}°E)"
+    else:
+        loc_str = f" (Y: {y:.1f}, X: {x:.1f})"
+
+    ax.set_title(
+        f"Haddu Canopy History & Breakpoint Verification{loc_str}\n"
+        f"Seasonal Baseline Fit: σ={safe_sigma:.3f} | Threshold={z_threshold}σ",
+        fontsize=12,
+        fontweight="bold",
+        pad=10,
+    )
+    ax.set_ylabel("NDVI", fontsize=11, fontweight="bold")
+    ax.set_xlabel("Observation Date", fontsize=11, fontweight="bold")
+    ax.set_ylim(-0.15, 1.0)
+    ax.grid(True, linestyle=":", alpha=0.6)
+    ax.legend(loc="lower left", framealpha=0.9, fontsize=9)
+
+    plt.tight_layout()
+
+    # Determine destination path
+    if output_path is None:
+        if lat is not None and lon is not None:
+            filename = f"pixel_profile_{lat:.5f}_{lon:.5f}.png"
+        else:
+            filename = f"pixel_profile_{y:.0f}_{x:.0f}.png"
+        dest_path = Path("output") / filename
+    else:
+        dest_path = Path(output_path)
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(dest_path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+
+    logger.info(f"Saved pixel profile verification plot to: {dest_path.resolve()}")
+    return dest_path

@@ -15,6 +15,7 @@ from shapely.geometry import shape, Polygon
 import xarray as xr
 
 from haddu.core.change_detector import ChangeDetectionResult, SQM_PER_ACRE
+from haddu.core.persistence import PersistentBreakResult
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +83,15 @@ def vectorize_change_mask(
         "geometry",
     ]
 
-    # Resolve DataArrays from ChangeDetectionResult or raw DataArray
+    # Resolve DataArrays from ChangeDetectionResult, PersistentBreakResult, or raw DataArray
     delta_ndvi_da: Optional[xr.DataArray] = None
-    if isinstance(change_input, ChangeDetectionResult):
+    if isinstance(change_input, PersistentBreakResult):
+        return vectorize_persistent_breaks(
+            change_input,
+            source_crs=source_crs,
+            target_crs=target_crs,
+        )
+    elif isinstance(change_input, ChangeDetectionResult):
         labeled_da = change_input.labeled_mask
         mask_da = change_input.change_mask
         delta_ndvi_da = change_input.delta_ndvi
@@ -175,6 +182,144 @@ def vectorize_change_mask(
 
     logger.info(
         f"Vectorized {len(gdf_wgs84)} polygon(s). Total loss area: "
+        f"{gdf_wgs84['area_acres'].sum():.2f} acres."
+    )
+    return gdf_wgs84
+
+
+def vectorize_persistent_breaks(
+    result: PersistentBreakResult,
+    source_crs: str = DEFAULT_SOURCE_CRS,
+    target_crs: str = DEFAULT_TARGET_CRS,
+) -> gpd.GeoDataFrame:
+    """Convert PersistentBreakResult into a projected vector GeoDataFrame.
+
+    Traces polygon outlines around contiguous persistent clearing patches,
+    computes area in square meters and acres, derives WGS84 centroids,
+    and attaches break_date and confidence_zscore attributes.
+
+    Args:
+        result: PersistentBreakResult instance from detect_persistent_breaks.
+        source_crs: Coordinate Reference System of the raster grid (default: EPSG:32643).
+        target_crs: Destination CRS for polygon output (default: EPSG:4326).
+
+    Returns:
+        geopandas.GeoDataFrame in target_crs with columns:
+        - patch_id (int)
+        - break_date (Optional[str])
+        - confidence_zscore (Optional[float])
+        - area_acres (float)
+        - area_sqm (float)
+        - centroid_lat (float)
+        - centroid_lon (float)
+        - geometry (shapely.geometry.Polygon)
+    """
+    import scipy.ndimage as ndi
+    import pandas as pd
+
+    empty_cols = [
+        "patch_id",
+        "break_date",
+        "confidence_zscore",
+        "area_acres",
+        "area_sqm",
+        "centroid_lat",
+        "centroid_lon",
+        "geometry",
+    ]
+
+    mask_da = result.change_mask
+    mask_arr = mask_da.values.astype(bool)
+
+    if not np.any(mask_arr):
+        logger.info("No persistent change detected. Returning empty GeoDataFrame.")
+        return gpd.GeoDataFrame(
+            columns=empty_cols,
+            geometry="geometry",
+            crs=target_crs,
+        )
+
+    # Derive connected component labels
+    labeled_arr, num_patches = ndi.label(mask_arr, structure=np.ones((3, 3), dtype=bool))
+
+    transform = extract_affine_transform(mask_da)
+    shapes_generator = rasterio.features.shapes(
+        labeled_arr.astype(np.int32),
+        mask=mask_arr,
+        transform=transform,
+        connectivity=8,
+    )
+
+    records = []
+    break_dates_arr = result.break_dates.values
+    z_scores_arr = result.z_scores.values if result.z_scores is not None else None
+
+    # Pre-map patch_metrics if available
+    metrics_map = {m["patch_id"]: m for m in (result.patch_metrics or [])}
+
+    for geom_dict, label_val in shapes_generator:
+        patch_id = int(label_val)
+        if patch_id == 0:
+            continue
+
+        poly = shape(geom_dict)
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+
+        if poly.is_empty or poly.area <= 0:
+            continue
+
+        patch_mask = labeled_arr == patch_id
+
+        # Break date
+        break_date_str = None
+        if patch_id in metrics_map and metrics_map[patch_id].get("earliest_break_date"):
+            break_date_str = str(metrics_map[patch_id]["earliest_break_date"])
+        else:
+            dates_in_patch = break_dates_arr[patch_mask]
+            valid_dates = dates_in_patch[~pd.isna(dates_in_patch)]
+            if len(valid_dates) > 0:
+                break_date_str = pd.Timestamp(np.min(valid_dates)).strftime("%Y-%m-%d")
+
+        # Confidence z-score
+        confidence_zscore = None
+        if patch_id in metrics_map and metrics_map[patch_id].get("min_zscore") is not None:
+            confidence_zscore = abs(float(metrics_map[patch_id]["min_zscore"]))
+        elif z_scores_arr is not None:
+            sel_z = z_scores_arr[:, patch_mask]
+            clean_z = sel_z[~np.isnan(sel_z)]
+            if clean_z.size > 0:
+                confidence_zscore = round(abs(float(np.min(clean_z))), 2)
+
+        records.append({
+            "patch_id": patch_id,
+            "break_date": break_date_str,
+            "confidence_zscore": confidence_zscore,
+            "area_sqm": round(float(poly.area), 2),
+            "area_acres": round(float(poly.area / SQM_PER_ACRE), 4),
+            "geometry": poly,
+        })
+
+    if not records:
+        return gpd.GeoDataFrame(
+            columns=empty_cols,
+            geometry="geometry",
+            crs=target_crs,
+        )
+
+    gdf_proj = gpd.GeoDataFrame(records, geometry="geometry", crs=source_crs)
+    proj_centroids = gdf_proj.geometry.centroid
+    wgs84_centroids = proj_centroids.to_crs(target_crs)
+
+    gdf_wgs84 = gdf_proj.to_crs(target_crs)
+    gdf_wgs84["centroid_lat"] = wgs84_centroids.y
+    gdf_wgs84["centroid_lon"] = wgs84_centroids.x
+
+    gdf_wgs84 = gdf_wgs84[empty_cols]
+    gdf_wgs84 = gdf_wgs84.sort_values(by="area_sqm", ascending=False).reset_index(drop=True)
+
+    logger.info(
+        f"Vectorized {len(gdf_wgs84)} persistent breakpoint polygon(s). Total loss area: "
         f"{gdf_wgs84['area_acres'].sum():.2f} acres."
     )
     return gdf_wgs84

@@ -47,6 +47,7 @@ from haddu.core.vectorizer import (
     DEFAULT_TARGET_CRS,
     extract_affine_transform,
     vectorize_change_mask,
+    vectorize_persistent_breaks,
 )
 from haddu.core.timeseries import (
     DEFAULT_CUBE_BANDS,
@@ -69,6 +70,7 @@ from haddu.core.persistence import (
     DEFAULT_FOREST_NDBI_BASELINE,
     PersistentBreakResult,
     detect_persistent_breaks,
+    plot_pixel_profile,
 )
 
 __all__ = [
@@ -108,6 +110,7 @@ __all__ = [
     "DEFAULT_TARGET_CRS",
     "extract_affine_transform",
     "vectorize_change_mask",
+    "vectorize_persistent_breaks",
     "DEFAULT_CUBE_BANDS",
     "format_date_str",
     "build_timeseries_cube",
@@ -124,4 +127,5 @@ __all__ = [
     "DEFAULT_FOREST_NDBI_BASELINE",
     "PersistentBreakResult",
     "detect_persistent_breaks",
+    "plot_pixel_profile",
 ]
