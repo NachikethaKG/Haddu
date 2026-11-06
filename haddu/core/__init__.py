@@ -33,6 +33,14 @@ from haddu.core.indices import (
     calculate_nbr,
     calculate_dnbr,
 )
+from haddu.core.change_detector import (
+    DEFAULT_NDVI_THRESHOLD,
+    DEFAULT_MIN_AREA_SQM,
+    SpatialAlignmentError,
+    ChangeDetectionResult,
+    verify_spatial_alignment,
+    detect_canopy_loss,
+)
 
 __all__ = [
     "PLANETARY_COMPUTER_STAC_URL",
@@ -60,4 +68,10 @@ __all__ = [
     "calculate_ndre",
     "calculate_nbr",
     "calculate_dnbr",
+    "DEFAULT_NDVI_THRESHOLD",
+    "DEFAULT_MIN_AREA_SQM",
+    "SpatialAlignmentError",
+    "ChangeDetectionResult",
+    "verify_spatial_alignment",
+    "detect_canopy_loss",
 ]
