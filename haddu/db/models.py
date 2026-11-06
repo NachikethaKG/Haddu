@@ -69,6 +69,12 @@ class AOI(Base):
         cascade="all, delete-orphan",
         order_by="desc(SatellitePass.pass_date)",
     )
+    incidents: Mapped[List["EncroachmentIncident"]] = relationship(
+        "EncroachmentIncident",
+        back_populates="aoi",
+        cascade="all, delete-orphan",
+        order_by="desc(EncroachmentIncident.post_date)",
+    )
 
     def __repr__(self) -> str:
         return f"<AOI(name='{self.name}', category='{self.category}')>"
@@ -130,4 +136,94 @@ class SatellitePass(Base):
         return (
             f"<SatellitePass(platform='{self.platform}', "
             f"date='{self.pass_date}', cloud={self.cloud_cover_pct}%)>"
+        )
+
+
+class EncroachmentIncident(Base):
+    """Detected canopy loss / forest encroachment polygon incident."""
+
+    __tablename__ = "encroachment_incidents"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    aoi_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("aoi.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    pre_date: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+        index=True,
+    )
+    post_date: Mapped[date] = mapped_column(
+        Date,
+        nullable=False,
+        index=True,
+    )
+    area_sqm: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+    )
+    area_acres: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+    )
+    centroid_lat: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+    )
+    centroid_lon: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+    )
+    mean_delta_ndvi: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    max_delta_ndvi: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    geom: Mapped[Any] = mapped_column(
+        Geometry(
+            geometry_type="POLYGON",
+            srid=4326,
+            spatial_index=True,
+        ),
+        nullable=False,
+    )
+    break_date: Mapped[Optional[date]] = mapped_column(
+        Date,
+        nullable=True,
+    )
+    confidence_score: Mapped[Optional[float]] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    properties_json: Mapped[Optional[dict]] = mapped_column(
+        JSONB().with_variant(JSON, "sqlite"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    # Relationships
+    aoi: Mapped[Optional["AOI"]] = relationship(
+        "AOI",
+        back_populates="incidents",
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<EncroachmentIncident(id={self.id}, "
+            f"pre={self.pre_date}, post={self.post_date}, "
+            f"area={self.area_acres:.2f} acres)>"
         )

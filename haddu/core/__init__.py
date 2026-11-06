@@ -41,6 +41,12 @@ from haddu.core.change_detector import (
     verify_spatial_alignment,
     detect_canopy_loss,
 )
+from haddu.core.vectorizer import (
+    DEFAULT_SOURCE_CRS,
+    DEFAULT_TARGET_CRS,
+    extract_affine_transform,
+    vectorize_change_mask,
+)
 
 __all__ = [
     "PLANETARY_COMPUTER_STAC_URL",
@@ -74,4 +80,8 @@ __all__ = [
     "ChangeDetectionResult",
     "verify_spatial_alignment",
     "detect_canopy_loss",
+    "DEFAULT_SOURCE_CRS",
+    "DEFAULT_TARGET_CRS",
+    "extract_affine_transform",
+    "vectorize_change_mask",
 ]

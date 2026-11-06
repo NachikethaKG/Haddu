@@ -8,7 +8,7 @@ import pyproj
 from sqlalchemy import select, func
 from geoalchemy2.shape import from_shape
 
-from haddu.db.models import Base, AOI, SatellitePass
+from haddu.db.models import Base, AOI, SatellitePass, EncroachmentIncident
 from haddu.scripts.seed_aoi import SEED_AOIS, seed_areas_of_interest
 
 
@@ -16,6 +16,7 @@ def test_model_tables_and_columns():
     """Verify table names and essential column configurations on models."""
     assert AOI.__tablename__ == "aoi"
     assert SatellitePass.__tablename__ == "satellite_pass"
+    assert EncroachmentIncident.__tablename__ == "encroachment_incidents"
 
     aoi_cols = {col.name for col in AOI.__table__.columns}
     assert {"id", "name", "category", "geom", "created_at"}.issubset(aoi_cols)
@@ -31,6 +32,20 @@ def test_model_tables_and_columns():
         "metadata_json",
         "created_at",
     }.issubset(pass_cols)
+
+    incident_cols = {col.name for col in EncroachmentIncident.__table__.columns}
+    assert {
+        "id",
+        "aoi_id",
+        "pre_date",
+        "post_date",
+        "area_sqm",
+        "area_acres",
+        "centroid_lat",
+        "centroid_lon",
+        "geom",
+        "created_at",
+    }.issubset(incident_cols)
 
 
 def test_seed_aoi_geometries_are_valid():
@@ -95,6 +110,22 @@ def test_model_instantiation():
     assert sat_pass.platform == "Sentinel-2A"
     assert sat_pass.cloud_cover_pct == 12.5
     assert "Sentinel-2A" in repr(sat_pass)
+
+    incident = EncroachmentIncident(
+        aoi_id=uuid.uuid4(),
+        pre_date=date(2025, 12, 15),
+        post_date=date(2026, 3, 15),
+        area_sqm=5000.0,
+        area_acres=1.235,
+        centroid_lat=13.70,
+        centroid_lon=75.25,
+        mean_delta_ndvi=0.45,
+        max_delta_ndvi=0.65,
+        geom=geom,
+    )
+    assert incident.area_sqm == 5000.0
+    assert incident.area_acres == 1.235
+    assert "1.24 acres" in repr(incident)
 
 
 def test_seed_aoi_execution_flow():
