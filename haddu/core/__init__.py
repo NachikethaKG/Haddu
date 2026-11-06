@@ -53,6 +53,15 @@ from haddu.core.timeseries import (
     format_date_str,
     build_timeseries_cube,
 )
+from haddu.core.harmonic import (
+    ANNUAL_PERIOD_DAYS,
+    DEFAULT_MIN_VALID_OBS,
+    DEFAULT_RIDGE_ALPHA,
+    extract_time_array,
+    construct_harmonic_design_matrix,
+    HarmonicModel,
+    fit_harmonic_baseline,
+)
 
 __all__ = [
     "PLANETARY_COMPUTER_STAC_URL",
@@ -94,4 +103,11 @@ __all__ = [
     "DEFAULT_CUBE_BANDS",
     "format_date_str",
     "build_timeseries_cube",
+    "ANNUAL_PERIOD_DAYS",
+    "DEFAULT_MIN_VALID_OBS",
+    "DEFAULT_RIDGE_ALPHA",
+    "extract_time_array",
+    "construct_harmonic_design_matrix",
+    "HarmonicModel",
+    "fit_harmonic_baseline",
 ]
