@@ -18,6 +18,13 @@ from haddu.core.loader import (
     RasterLoadError,
     load_stac_dataset,
 )
+from haddu.core.masking import (
+    DEFAULT_INVALID_SCL_CLASSES,
+    DEFAULT_VALID_SCL_CLASSES,
+    DEFAULT_DILATE_PIXELS,
+    create_valid_mask,
+    apply_valid_mask,
+)
 
 __all__ = [
     "PLANETARY_COMPUTER_STAC_URL",
@@ -34,4 +41,9 @@ __all__ = [
     "LoaderError",
     "RasterLoadError",
     "load_stac_dataset",
+    "DEFAULT_INVALID_SCL_CLASSES",
+    "DEFAULT_VALID_SCL_CLASSES",
+    "DEFAULT_DILATE_PIXELS",
+    "create_valid_mask",
+    "apply_valid_mask",
 ]

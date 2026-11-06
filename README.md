@@ -42,6 +42,7 @@ Haddu/
 │   ├── core/                 # STAC catalog query, windowed loader, transforms
 │   │   ├── __init__.py
 │   │   ├── loader.py         # Windowed odc-stac raster ingestion engine
+│   │   ├── masking.py        # SCL cloud masking & morphological dilation
 │   │   └── stac_client.py    # Microsoft Planetary Computer STAC client
 │   ├── db/                   # SQLAlchemy models, sessions, spatial migrations
 │   │   ├── __init__.py
@@ -55,6 +56,7 @@ Haddu/
     ├── __init__.py
     ├── test_cli_fetch_pass.py # CLI pipeline & SCL masking tests
     ├── test_db_models.py     # Database models, geometry, and seeding tests
+    ├── test_masking.py       # SCL cloud masking & dilation unit tests
     ├── test_scaffolding.py   # Basic scaffolding and structure test suite
     └── test_stac_loader.py   # STAC query and low-memory ingestion tests
 ```
