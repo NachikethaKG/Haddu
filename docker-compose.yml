@@ -17,6 +17,21 @@ services:
       timeout: 5s
       retries: 5
 
+  worker:
+    build: .
+    container_name: haddu_worker
+    restart: unless-stopped
+    command: ["python", "-m", "haddu.scripts.daemon", "--interval-hours", "24"]
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://haddu:haddu_secret@db:5432/haddu_db
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./output:/app/output
+
 volumes:
   postgis_data:
     driver: local
