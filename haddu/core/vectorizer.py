@@ -6,16 +6,18 @@ with UTM projected area measurements, geographic WGS84 centroids, and spectral m
 
 import logging
 from typing import Optional, Union
+
 import geopandas as gpd
 import numpy as np
 import rasterio.features
 from rasterio.transform import from_origin
 import rioxarray  # noqa: F401 - activates .rio accessor on xarray objects
-from shapely.geometry import shape, Polygon
+from shapely.geometry import Polygon, shape
 import xarray as xr
 
 from haddu.core.change_detector import ChangeDetectionResult, SQM_PER_ACRE
 from haddu.core.persistence import PersistentBreakResult
+from haddu.core.sar_change import SARChangeDetectionResult
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +97,10 @@ def vectorize_change_mask(
         labeled_da = change_input.labeled_mask
         mask_da = change_input.change_mask
         delta_ndvi_da = change_input.delta_ndvi
+    elif isinstance(change_input, SARChangeDetectionResult):
+        labeled_da = change_input.labeled_mask
+        mask_da = change_input.disturbance_mask
+        delta_ndvi_da = change_input.delta_vh
     elif isinstance(change_input, xr.DataArray):
         labeled_da = change_input
         mask_da = change_input > 0
