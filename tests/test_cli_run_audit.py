@@ -44,6 +44,16 @@ def test_audit_cli_arguments():
     assert args.min_area_sqm == 600.0
     assert args.output_dir == Path("./test_audit_out")
     assert args.skip_db is True
+    assert args.notify_telegram is True
+
+    # Test --no-telegram flag
+    args_no_tg = parser.parse_args([
+        "--sensor", "s1",
+        "--pre-date", "2026-07-01",
+        "--post-date", "2026-08-15",
+        "--no-telegram",
+    ])
+    assert args_no_tg.notify_telegram is False
 
 
 def test_audit_cli_invalid_date_and_sensor():
@@ -207,6 +217,7 @@ def test_record_audit_violations_to_db_mocked():
     with (
         patch("haddu.scripts.run_audit.init_db"),
         patch("haddu.scripts.run_audit.get_db") as mock_get_db,
+        patch("haddu.scripts.run_audit.dispatch_incident_alert_sync") as mock_dispatch,
     ):
         mock_get_db.return_value.__enter__.return_value = mock_session
 
@@ -222,6 +233,21 @@ def test_record_audit_violations_to_db_mocked():
         assert count == 1
         assert mock_session.add.called
         assert mock_session.commit.called
+        assert mock_dispatch.called
+
+        # When notify_telegram is False
+        mock_dispatch.reset_mock()
+        count_no_notify = record_audit_violations_to_db(
+            classified_gdf=gdf,
+            sensor="s1",
+            pre_date=date(2026, 7, 1),
+            post_date=date(2026, 8, 15),
+            aoi_name="Thirthahalli Taluk",
+            bbox=[75.05, 13.55, 75.40, 13.85],
+            notify_telegram=False,
+        )
+        assert count_no_notify == 1
+        assert not mock_dispatch.called
 
 
 def test_print_audit_report(capsys):

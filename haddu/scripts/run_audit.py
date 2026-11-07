@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
+import httpx
 import pystac
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Polygon
@@ -54,6 +55,7 @@ from haddu.core.stac_client import DEFAULT_AOI_BBOX
 from haddu.core.vectorizer import vectorize_change_mask
 from haddu.db.models import AOI, EncroachmentIncident
 from haddu.db.session import engine, get_db, init_db
+from haddu.notifications import dispatch_incident_alert_sync
 from haddu.scripts.detect_change import find_best_pass_near_date
 
 logging.basicConfig(
@@ -150,90 +152,110 @@ def record_audit_violations_to_db(
     post_date: date,
     aoi_name: str,
     bbox: Sequence[float],
+    notify_telegram: bool = True,
+    session_override: Any | None = None,
 ) -> int:
-    """Persist classified legal violation incidents to PostGIS database."""
+    """Persist classified legal violation incidents to PostGIS database and dispatch alerts."""
     if classified_gdf.empty:
         logger.info("No detected incidents to commit to database.")
         return 0
 
+    def _persist(session) -> int:
+        # Ensure AOI exists
+        aoi = session.scalar(select(AOI).where(AOI.name == aoi_name))
+        if not aoi:
+            poly = Polygon([
+                (bbox[0], bbox[1]),
+                (bbox[2], bbox[1]),
+                (bbox[2], bbox[3]),
+                (bbox[0], bbox[3]),
+                (bbox[0], bbox[1]),
+            ])
+            aoi = AOI(
+                name=aoi_name,
+                category="Taluk",
+                geom=from_shape(poly, srid=4326),
+            )
+            session.add(aoi)
+            session.flush()
+
+        inserted_count = 0
+        inserted_incidents = []
+        for idx, row in classified_gdf.iterrows():
+            poly_geom = row.geometry
+            reasons_val = row.get("violation_reasons", [])
+            if isinstance(reasons_val, (list, tuple)):
+                reasons_list = list(reasons_val)
+            else:
+                reasons_list = [str(reasons_val)]
+
+            incident = EncroachmentIncident(
+                aoi_id=aoi.id,
+                pre_date=pre_date,
+                post_date=post_date,
+                area_sqm=float(row.get("area_sqm", 0.0)),
+                area_acres=float(row.get("area_acres", 0.0)),
+                centroid_lat=float(row.get("centroid_lat", 0.0)),
+                centroid_lon=float(row.get("centroid_lon", 0.0)),
+                mean_delta_ndvi=(
+                    float(row["mean_delta_ndvi"])
+                    if row.get("mean_delta_ndvi") is not None
+                    else None
+                ),
+                max_delta_ndvi=(
+                    float(row["max_delta_ndvi"])
+                    if row.get("max_delta_ndvi") is not None
+                    else None
+                ),
+                geom=from_shape(poly_geom, srid=4326),
+                violation_tier=str(row.get("violation_tier", ViolationTier.MODERATE)),
+                encroached_rf_name=row.get("encroached_rf_name"),
+                rf_area_acres=(
+                    float(row["rf_area_acres"])
+                    if row.get("rf_area_acres") is not None
+                    else 0.0
+                ),
+                riparian_breach=bool(row.get("riparian_breach", False)),
+                sensor=sensor,
+                properties_json={
+                    "sensor": sensor,
+                    "patch_id": int(row.get("patch_id", idx)),
+                    "violation_tier": row.get("violation_tier"),
+                    "esz_breach": bool(row.get("esz_breach", False)),
+                    "distance_to_rf_m": float(row.get("distance_to_rf_m", 0.0)),
+                    "nearest_rf_name": row.get("nearest_rf_name"),
+                    "violation_reasons": reasons_list,
+                    "pre_date": pre_date.isoformat(),
+                    "post_date": post_date.isoformat(),
+                },
+            )
+            session.add(incident)
+            inserted_incidents.append(incident)
+            inserted_count += 1
+
+        session.commit()
+        logger.info(f"Successfully committed {inserted_count} incident records with legal tiers to PostGIS.")
+
+        # Dispatch automated Telegram alerts for high-severity violations (CRITICAL / HIGH)
+        if notify_telegram:
+            for inc in inserted_incidents:
+                tier_str = str(getattr(inc, "violation_tier", "")).upper()
+                if tier_str in ("CRITICAL", "HIGH"):
+                    try:
+                        dispatch_incident_alert_sync(inc)
+                    except (httpx.HTTPError, ValueError, OSError, RuntimeError) as alert_err:
+                        logger.warning("Failed to dispatch Telegram alert for incident %s: %s", inc.id, alert_err)
+
+        return inserted_count
+
     try:
         logger.info("Connecting to PostGIS database to persist legal violation incidents...")
+        if session_override is not None:
+            return _persist(session_override)
+
         init_db(engine)
-
         with get_db() as session:
-            # Ensure AOI exists
-            aoi = session.scalar(select(AOI).where(AOI.name == aoi_name))
-            if not aoi:
-                poly = Polygon([
-                    (bbox[0], bbox[1]),
-                    (bbox[2], bbox[1]),
-                    (bbox[2], bbox[3]),
-                    (bbox[0], bbox[3]),
-                    (bbox[0], bbox[1]),
-                ])
-                aoi = AOI(
-                    name=aoi_name,
-                    category="Taluk",
-                    geom=from_shape(poly, srid=4326),
-                )
-                session.add(aoi)
-                session.flush()
-
-            inserted_count = 0
-            for idx, row in classified_gdf.iterrows():
-                poly_geom = row.geometry
-                reasons_val = row.get("violation_reasons", [])
-                if isinstance(reasons_val, (list, tuple)):
-                    reasons_list = list(reasons_val)
-                else:
-                    reasons_list = [str(reasons_val)]
-
-                incident = EncroachmentIncident(
-                    aoi_id=aoi.id,
-                    pre_date=pre_date,
-                    post_date=post_date,
-                    area_sqm=float(row.get("area_sqm", 0.0)),
-                    area_acres=float(row.get("area_acres", 0.0)),
-                    centroid_lat=float(row.get("centroid_lat", 0.0)),
-                    centroid_lon=float(row.get("centroid_lon", 0.0)),
-                    mean_delta_ndvi=(
-                        float(row["mean_delta_ndvi"])
-                        if row.get("mean_delta_ndvi") is not None
-                        else None
-                    ),
-                    max_delta_ndvi=(
-                        float(row["max_delta_ndvi"])
-                        if row.get("max_delta_ndvi") is not None
-                        else None
-                    ),
-                    geom=from_shape(poly_geom, srid=4326),
-                    violation_tier=str(row.get("violation_tier", ViolationTier.MODERATE)),
-                    encroached_rf_name=row.get("encroached_rf_name"),
-                    rf_area_acres=(
-                        float(row["rf_area_acres"])
-                        if row.get("rf_area_acres") is not None
-                        else 0.0
-                    ),
-                    riparian_breach=bool(row.get("riparian_breach", False)),
-                    sensor=sensor,
-                    properties_json={
-                        "sensor": sensor,
-                        "patch_id": int(row.get("patch_id", idx)),
-                        "violation_tier": row.get("violation_tier"),
-                        "esz_breach": bool(row.get("esz_breach", False)),
-                        "distance_to_rf_m": float(row.get("distance_to_rf_m", 0.0)),
-                        "nearest_rf_name": row.get("nearest_rf_name"),
-                        "violation_reasons": reasons_list,
-                        "pre_date": pre_date.isoformat(),
-                        "post_date": post_date.isoformat(),
-                    },
-                )
-                session.add(incident)
-                inserted_count += 1
-
-            session.commit()
-            logger.info(f"Successfully committed {inserted_count} incident records with legal tiers to PostGIS.")
-            return inserted_count
+            return _persist(session)
 
     except OperationalError as exc:
         logger.warning(
@@ -263,6 +285,7 @@ def run_audit_pipeline(
     skip_db: bool = False,
     session_override: Any | None = None,
     boundaries_dir: Path | None = None,
+    notify_telegram: bool = True,
 ) -> tuple[Path, gpd.GeoDataFrame, dict[str, Any]]:
     """Execute end-to-end multi-sensor audit and legal violation classification pipeline.
 
@@ -435,18 +458,16 @@ def run_audit_pipeline(
 
     # 5. Database Persistence
     if not skip_db:
-        if session_override is not None:
-            # When session_override is supplied in tests
-            pass
-        else:
-            record_audit_violations_to_db(
-                classified_gdf=classified_gdf,
-                sensor=sensor_type,
-                pre_date=pre_date,
-                post_date=post_date,
-                aoi_name=aoi_name,
-                bbox=bbox,
-            )
+        record_audit_violations_to_db(
+            classified_gdf=classified_gdf,
+            sensor=sensor_type,
+            pre_date=pre_date,
+            post_date=post_date,
+            aoi_name=aoi_name,
+            bbox=bbox,
+            notify_telegram=notify_telegram,
+            session_override=session_override,
+        )
 
     return geojson_path, classified_gdf, summary
 
@@ -566,6 +587,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Skip recording incident records to PostGIS database.",
     )
+    parser.add_argument(
+        "--no-telegram",
+        dest="notify_telegram",
+        action="store_false",
+        default=True,
+        help="Disable automatic Telegram dispatch for CRITICAL and HIGH incidents.",
+    )
     return parser
 
 
@@ -584,6 +612,7 @@ def main() -> None:
             min_area_sqm=args.min_area_sqm,
             max_cloud=args.max_cloud,
             skip_db=args.skip_db,
+            notify_telegram=args.notify_telegram,
         )
         print_audit_report(summary, classified_gdf)
     except Exception:
