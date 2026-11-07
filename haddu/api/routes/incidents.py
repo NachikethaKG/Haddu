@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from geoalchemy2.shape import to_shape
 from shapely.geometry import mapping
 from sqlalchemy import func, select
@@ -19,6 +19,7 @@ from haddu.api.schemas import (
 from haddu.core.classifier import ViolationTier
 from haddu.db.models import EncroachmentIncident
 from haddu.db.session import get_db_session
+from haddu.reporting import compile_dossier_pdf
 
 router = APIRouter(prefix="/api/v1/incidents", tags=["Incidents"])
 
@@ -194,3 +195,35 @@ def get_incident(
     if not incident:
         raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found.")
     return incident
+
+
+@router.get(
+    "/{incident_id}/dossier",
+    summary="Generate legal evidence dossier PDF",
+    responses={
+        200: {
+            "content": {"application/pdf": {}},
+            "description": "Returns a compiled single-page A4 legal evidence dossier PDF.",
+        },
+        404: {"description": "Incident not found."},
+    },
+)
+def get_incident_dossier(
+    incident_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db_session)],
+) -> Response:
+    """Compile and return formal legal evidence dossier (PDF) for an encroachment incident."""
+    incident = db.scalar(select(EncroachmentIncident).where(EncroachmentIncident.id == incident_id))
+    if not incident:
+        raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found.")
+
+    pdf_bytes = compile_dossier_pdf(incident)
+    filename = f"Haddu_Dossier_{incident_id}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+        },
+    )

@@ -282,3 +282,25 @@ def test_aoi_bounds_and_lists(client, mock_session):
     res_water_geojson = client.get("/api/v1/aoi/water-courses/geojson")
     assert res_water_geojson.status_code == 200
     assert res_water_geojson.json()["type"] == "FeatureCollection"
+
+
+def test_get_incident_dossier_pdf_endpoint(client, mock_session, sample_incidents):
+    """Verify GET /api/v1/incidents/{id}/dossier compiles and streams legal PDF."""
+    target_inc = sample_incidents[0]
+    mock_session.scalar.return_value = target_inc
+
+    response = client.get(f"/api/v1/incidents/{target_inc.id}/dossier")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert f"Haddu_Dossier_{target_inc.id}.pdf" in response.headers["content-disposition"]
+    assert response.content.startswith(b"%PDF-")
+
+
+def test_get_incident_dossier_pdf_not_found(client, mock_session):
+    """Verify 404 response when requesting dossier for nonexistent incident ID."""
+    mock_session.scalar.return_value = None
+    random_id = uuid.uuid4()
+
+    response = client.get(f"/api/v1/incidents/{random_id}/dossier")
+    assert response.status_code == 404
+    assert f"Incident '{random_id}' not found." in response.json()["detail"]
