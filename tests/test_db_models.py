@@ -61,6 +61,11 @@ def test_model_tables_and_columns():
         "centroid_lat",
         "centroid_lon",
         "geom",
+        "violation_tier",
+        "encroached_rf_name",
+        "rf_area_acres",
+        "riparian_breach",
+        "sensor",
         "created_at",
     }.issubset(incident_cols)
 
@@ -159,11 +164,19 @@ def test_model_instantiation():
         centroid_lon=75.25,
         mean_delta_ndvi=0.45,
         max_delta_ndvi=0.65,
+        violation_tier="CRITICAL",
+        encroached_rf_name="Agumbe Rainforest Reserve Forest",
+        rf_area_acres=1.235,
+        riparian_breach=False,
+        sensor="s1",
         geom=geom,
     )
     assert incident.area_sqm == 5000.0
     assert incident.area_acres == 1.235
+    assert incident.violation_tier == "CRITICAL"
+    assert incident.encroached_rf_name == "Agumbe Rainforest Reserve Forest"
     assert "1.24 acres" in repr(incident)
+    assert "tier=CRITICAL" in repr(incident)
 
     forest = ForestBoundary(
         name="Agumbe Rainforest Reserve Forest",

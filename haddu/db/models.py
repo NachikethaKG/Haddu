@@ -10,6 +10,7 @@ from typing import Any, Optional
 from geoalchemy2 import Geometry
 from sqlalchemy import (
     JSON,
+    Boolean,
     Date,
     DateTime,
     Float,
@@ -205,6 +206,33 @@ class EncroachmentIncident(Base):
         Float,
         nullable=True,
     )
+    violation_tier: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        index=True,
+        comment="Legal violation tier: CRITICAL, HIGH, or MODERATE",
+    )
+    encroached_rf_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+        comment="Name of Reserve Forest breached, if any",
+    )
+    rf_area_acres: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Area within Reserve Forest in acres",
+    )
+    riparian_breach: Mapped[bool | None] = mapped_column(
+        Boolean,
+        nullable=True,
+        default=False,
+        comment="Whether 50m riparian watercourse buffer was breached",
+    )
+    sensor: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+        comment="Sensor platform: s1 (SAR) or s2 (Optical)",
+    )
     properties_json: Mapped[dict | None] = mapped_column(
         JSONB().with_variant(JSON, "sqlite"),
         nullable=True,
@@ -222,10 +250,11 @@ class EncroachmentIncident(Base):
     )
 
     def __repr__(self) -> str:
+        tier_info = f", tier={self.violation_tier}" if self.violation_tier else ""
         return (
             f"<EncroachmentIncident(id={self.id}, "
             f"pre={self.pre_date}, post={self.post_date}, "
-            f"area={self.area_acres:.2f} acres)>"
+            f"area={self.area_acres:.2f} acres{tier_info})>"
         )
 
 
