@@ -13,6 +13,7 @@ from haddu.db.session import (
     SessionLocal,
     engine,
     get_db,
+    get_db_session,
     get_engine,
     init_db,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "WaterCourse",
     "engine",
     "get_db",
+    "get_db_session",
     "get_engine",
     "init_db",
 ]

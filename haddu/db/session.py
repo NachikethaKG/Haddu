@@ -55,6 +55,12 @@ def get_db(session_factory=SessionLocal) -> Generator[Session, None, None]:
         session.close()
 
 
+def get_db_session() -> Generator[Session, None, None]:
+    """FastAPI database dependency yielding an active transactional session."""
+    with get_db() as session:
+        yield session
+
+
 def init_db(target_engine: Engine | None = None) -> None:
     """Initialize database extensions and create all declared tables."""
     from haddu.db.models import Base
