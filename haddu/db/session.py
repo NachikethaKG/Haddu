@@ -4,12 +4,13 @@ Supports PostgreSQL + PostGIS with connection pooling and automated extension se
 """
 
 import os
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
+
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
 
 # Load environment variables from .env if available
 load_dotenv()

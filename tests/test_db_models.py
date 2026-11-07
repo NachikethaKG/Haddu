@@ -3,13 +3,28 @@
 import uuid
 from datetime import date
 from unittest.mock import MagicMock
-from shapely.geometry import Polygon
-import pyproj
-from sqlalchemy import select, func
-from geoalchemy2.shape import from_shape
 
-from haddu.db.models import Base, AOI, SatellitePass, EncroachmentIncident
+import numpy as np
+import pyproj
+import shapely
+from geoalchemy2.shape import from_shape
+from shapely.geometry import LineString, MultiLineString, MultiPolygon, Polygon
+
+from haddu.db.models import (
+    AOI,
+    EncroachmentIncident,
+    ForestBoundary,
+    SatellitePass,
+    WaterCourse,
+)
 from haddu.scripts.seed_aoi import SEED_AOIS, seed_areas_of_interest
+from haddu.scripts.seed_boundaries import (
+    _load_forest_features,
+    _load_water_features,
+    compute_riparian_buffer,
+    seed_forest_and_water_boundaries,
+    verify_spatial_indices,
+)
 
 
 def test_model_tables_and_columns():
@@ -17,6 +32,8 @@ def test_model_tables_and_columns():
     assert AOI.__tablename__ == "aoi"
     assert SatellitePass.__tablename__ == "satellite_pass"
     assert EncroachmentIncident.__tablename__ == "encroachment_incidents"
+    assert ForestBoundary.__tablename__ == "forest_boundaries"
+    assert WaterCourse.__tablename__ == "water_courses"
 
     aoi_cols = {col.name for col in AOI.__table__.columns}
     assert {"id", "name", "category", "geom", "created_at"}.issubset(aoi_cols)
@@ -46,6 +63,27 @@ def test_model_tables_and_columns():
         "geom",
         "created_at",
     }.issubset(incident_cols)
+
+    forest_cols = {col.name for col in ForestBoundary.__table__.columns}
+    assert {
+        "id",
+        "name",
+        "category",
+        "geom",
+        "area_sqm",
+        "area_acres",
+        "created_at",
+    }.issubset(forest_cols)
+
+    water_cols = {col.name for col in WaterCourse.__table__.columns}
+    assert {
+        "id",
+        "name",
+        "geom",
+        "buffer_geom",
+        "buffer_distance_m",
+        "created_at",
+    }.issubset(water_cols)
 
 
 def test_seed_aoi_geometries_are_valid():
@@ -127,6 +165,30 @@ def test_model_instantiation():
     assert incident.area_acres == 1.235
     assert "1.24 acres" in repr(incident)
 
+    forest = ForestBoundary(
+        name="Agumbe Rainforest Reserve Forest",
+        category="RF",
+        geom=from_shape(MultiPolygon([Polygon(sample_coords)]), srid=4326),
+        area_sqm=50000.0,
+        area_acres=12.35,
+    )
+    assert forest.name == "Agumbe Rainforest Reserve Forest"
+    assert forest.category == "RF"
+    assert "Agumbe Rainforest Reserve Forest" in repr(forest)
+
+    water = WaterCourse(
+        name="Tunga River Corridor",
+        geom=from_shape(
+            MultiLineString([LineString([(75.16, 13.61), (75.21, 13.64)])]),
+            srid=4326,
+        ),
+        buffer_geom=from_shape(MultiPolygon([Polygon(sample_coords)]), srid=4326),
+        buffer_distance_m=50.0,
+    )
+    assert water.name == "Tunga River Corridor"
+    assert water.buffer_distance_m == 50.0
+    assert "Tunga River Corridor" in repr(water)
+
 
 def test_seed_aoi_execution_flow():
     """Verify seed_areas_of_interest execution flow and query processing."""
@@ -145,3 +207,71 @@ def test_seed_aoi_execution_flow():
     assert mock_session.add.call_count == len(SEED_AOIS)
     assert mock_session.flush.called
     assert mock_session.execute.called
+
+
+def test_compute_riparian_buffer():
+    """Verify compute_riparian_buffer creates a valid 50m buffer in UTM Zone 43N reprojected to EPSG:4326."""
+    line = LineString([(75.16, 13.61), (75.21, 13.64), (75.25, 13.67)])
+    buf = compute_riparian_buffer(line, buffer_distance_m=50.0)
+
+    assert isinstance(buf, MultiPolygon)
+    assert buf.is_valid
+    assert not buf.is_empty
+
+    # Transform back to UTM 32643 to verify buffer width is ~50m
+    t_utm = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:32643", always_xy=True)
+    line_utm = shapely.transform(line, lambda c: np.column_stack(t_utm.transform(c[:, 0], c[:, 1])))
+    buf_utm = shapely.transform(buf, lambda c: np.column_stack(t_utm.transform(c[:, 0], c[:, 1])))
+
+    # Distance from points on buffer exterior to center line should be approx 50m
+    exterior = buf_utm.geoms[0].exterior
+    sample_pt = exterior.interpolate(100)
+    dist = line_utm.distance(sample_pt)
+    assert abs(dist - 50.0) < 1.0, f"Expected ~50m buffer width, got {dist:.2f}m"
+
+
+def test_load_boundary_features_from_data():
+    """Verify loading boundary features from GeoJSON in data/boundaries."""
+    forests = _load_forest_features()
+    assert len(forests) >= 4
+    forest_names = {f["name"] for f in forests}
+    assert any("Agumbe" in name for name in forest_names)
+    assert any("Kundadri" in name for name in forest_names)
+    assert any("Megaravalli" in name for name in forest_names)
+    assert any("Gomala" in name for name in forest_names)
+
+    for item in forests:
+        assert isinstance(item["geometry"], MultiPolygon)
+        assert item["geometry"].is_valid
+        assert item["category"] in ("RF", "NationalPark", "Gomala")
+
+    watercourses = _load_water_features()
+    assert len(watercourses) >= 1
+    tunga = next(w for w in watercourses if "Tunga" in w["name"])
+    assert isinstance(tunga["geometry"], MultiLineString)
+    assert tunga["geometry"].is_valid
+    assert tunga["buffer_distance_m"] == 50.0
+
+
+def test_spatial_indices_verification():
+    """Verify verify_spatial_indices checks spatial indices on forest and water tables."""
+    mock_session = MagicMock()
+    indices = verify_spatial_indices(mock_session)
+    assert "forest_boundaries.geom" in indices
+    assert "water_courses.geom" in indices
+    assert "water_courses.buffer_geom" in indices
+    assert all(indices.values()), f"Expected all spatial indices to be True, got {indices}"
+
+
+def test_seed_forest_and_water_boundaries_flow():
+    """Verify seed_forest_and_water_boundaries execution flow with mock session."""
+    mock_session = MagicMock()
+    mock_session.scalar.return_value = None  # Simulates first-time insert
+
+    summary = seed_forest_and_water_boundaries(session_override=mock_session)
+
+    assert summary["forest_tracts_count"] >= 4
+    assert summary["water_courses_count"] >= 1
+    assert mock_session.add.call_count >= 5
+    assert mock_session.flush.called
+    assert all(summary["spatial_indices"].values())

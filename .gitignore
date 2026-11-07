@@ -71,6 +71,8 @@ htmlcov/
 # Local data & outputs
 data/*
 !data/.gitkeep
+!data/boundaries/
+!data/boundaries/**
 output/
 *.png
 *.jpg

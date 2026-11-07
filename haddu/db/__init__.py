@@ -1,17 +1,33 @@
 """Database models, sessions, and spatial migrations."""
 
-from haddu.db.models import Base, AOI, SatellitePass, EncroachmentIncident
-from haddu.db.session import get_engine, get_db, init_db, SessionLocal, engine, DATABASE_URL
+from haddu.db.models import (
+    AOI,
+    Base,
+    EncroachmentIncident,
+    ForestBoundary,
+    SatellitePass,
+    WaterCourse,
+)
+from haddu.db.session import (
+    DATABASE_URL,
+    SessionLocal,
+    engine,
+    get_db,
+    get_engine,
+    init_db,
+)
 
 __all__ = [
-    "Base",
     "AOI",
-    "SatellitePass",
-    "EncroachmentIncident",
-    "get_engine",
-    "get_db",
-    "init_db",
-    "SessionLocal",
-    "engine",
     "DATABASE_URL",
+    "Base",
+    "EncroachmentIncident",
+    "ForestBoundary",
+    "SatellitePass",
+    "SessionLocal",
+    "WaterCourse",
+    "engine",
+    "get_db",
+    "get_engine",
+    "init_db",
 ]

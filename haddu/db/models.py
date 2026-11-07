@@ -4,26 +4,26 @@ Includes AOI (Area of Interest) and SatellitePass tables with PostGIS Geometry s
 """
 
 import uuid
-from datetime import datetime, date
-from typing import Optional, List, Any
+from datetime import date, datetime
+from typing import Any, Optional
+
+from geoalchemy2 import Geometry
 from sqlalchemy import (
-    String,
-    Float,
+    JSON,
     Date,
     DateTime,
+    Float,
     ForeignKey,
-    func,
-    JSON,
+    String,
     Uuid,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
-from geoalchemy2 import Geometry
 
 
 class Base(DeclarativeBase):
     """Base declarative class for Haddu database models."""
-    pass
 
 
 class AOI(Base):
@@ -63,13 +63,13 @@ class AOI(Base):
     )
 
     # Relationships
-    passes: Mapped[List["SatellitePass"]] = relationship(
+    passes: Mapped[list["SatellitePass"]] = relationship(
         "SatellitePass",
         back_populates="aoi",
         cascade="all, delete-orphan",
         order_by="desc(SatellitePass.pass_date)",
     )
-    incidents: Mapped[List["EncroachmentIncident"]] = relationship(
+    incidents: Mapped[list["EncroachmentIncident"]] = relationship(
         "EncroachmentIncident",
         back_populates="aoi",
         cascade="all, delete-orphan",
@@ -106,17 +106,17 @@ class SatellitePass(Base):
         nullable=False,
         index=True,
     )
-    cloud_cover_pct: Mapped[Optional[float]] = mapped_column(
+    cloud_cover_pct: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
     )
-    stac_item_id: Mapped[Optional[str]] = mapped_column(
+    stac_item_id: Mapped[str | None] = mapped_column(
         String(255),
         unique=True,
         nullable=True,
         index=True,
     )
-    metadata_json: Mapped[Optional[dict]] = mapped_column(
+    metadata_json: Mapped[dict | None] = mapped_column(
         JSONB().with_variant(JSON, "sqlite"),
         nullable=True,
     )
@@ -149,7 +149,7 @@ class EncroachmentIncident(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
-    aoi_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    aoi_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("aoi.id", ondelete="SET NULL"),
         nullable=True,
@@ -181,11 +181,11 @@ class EncroachmentIncident(Base):
         Float,
         nullable=False,
     )
-    mean_delta_ndvi: Mapped[Optional[float]] = mapped_column(
+    mean_delta_ndvi: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
     )
-    max_delta_ndvi: Mapped[Optional[float]] = mapped_column(
+    max_delta_ndvi: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
     )
@@ -197,15 +197,15 @@ class EncroachmentIncident(Base):
         ),
         nullable=False,
     )
-    break_date: Mapped[Optional[date]] = mapped_column(
+    break_date: Mapped[date | None] = mapped_column(
         Date,
         nullable=True,
     )
-    confidence_score: Mapped[Optional[float]] = mapped_column(
+    confidence_score: Mapped[float | None] = mapped_column(
         Float,
         nullable=True,
     )
-    properties_json: Mapped[Optional[dict]] = mapped_column(
+    properties_json: Mapped[dict | None] = mapped_column(
         JSONB().with_variant(JSON, "sqlite"),
         nullable=True,
     )
@@ -227,3 +227,99 @@ class EncroachmentIncident(Base):
             f"pre={self.pre_date}, post={self.post_date}, "
             f"area={self.area_acres:.2f} acres)>"
         )
+
+
+class ForestBoundary(Base):
+    """Gazetted forest boundary (Reserve Forest, National Park, Gomala / Community Land)."""
+
+    __tablename__ = "forest_boundaries"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    name: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    category: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        index=True,
+        comment="Category: RF (Reserve Forest), NationalPark, Gomala",
+    )
+    geom: Mapped[Any] = mapped_column(
+        Geometry(
+            geometry_type="MULTIPOLYGON",
+            srid=4326,
+            spatial_index=True,
+        ),
+        nullable=False,
+    )
+    area_sqm: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    area_acres: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        return f"<ForestBoundary(name='{self.name}', category='{self.category}')>"
+
+
+class WaterCourse(Base):
+    """River, stream, or water channel corridor with statutory riparian protection buffer."""
+
+    __tablename__ = "water_courses"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    name: Mapped[str] = mapped_column(
+        String(255),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    geom: Mapped[Any | None] = mapped_column(
+        Geometry(
+            geometry_type="MULTILINESTRING",
+            srid=4326,
+            spatial_index=True,
+        ),
+        nullable=True,
+    )
+    buffer_geom: Mapped[Any] = mapped_column(
+        Geometry(
+            geometry_type="MULTIPOLYGON",
+            srid=4326,
+            spatial_index=True,
+        ),
+        nullable=False,
+    )
+    buffer_distance_m: Mapped[float] = mapped_column(
+        Float,
+        default=50.0,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    def __repr__(self) -> str:
+        return f"<WaterCourse(name='{self.name}', buffer={self.buffer_distance_m}m)>"
+
