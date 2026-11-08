@@ -136,7 +136,16 @@ Example output:
 13:13:48 [INFO] Pipeline Completed in 30.75 seconds.
 ```
 
-### 7. Run Tests
+### 7. Interactive Geospatial Dashboard (Next.js)
+Launch the web dashboard to inspect satellite basemaps and incident layers over Thirthahalli:
+```bash
+cd web
+npm install
+npm run dev
+```
+Navigate to [http://localhost:3000](http://localhost:3000) to view the MapLibre GL full-screen map canvas.
+
+### 8. Run Tests
 Verify repository installation, models, STAC client, and CLI pipeline:
 ```bash
 pytest
