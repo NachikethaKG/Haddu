@@ -99,6 +99,17 @@ export default function Map({
   const popupRef = useRef<maplibregl.Popup | null>(null);
   const hoveredIncidentIdRef = useRef<string | number | null>(null);
 
+  // Keep callback and data refs updated so the map initialization effect doesn't re-run
+  const onMapLoadRef = useRef(onMapLoad);
+  useEffect(() => {
+    onMapLoadRef.current = onMapLoad;
+  }, [onMapLoad]);
+
+  const onIncidentSelectRef = useRef(onIncidentSelect);
+  useEffect(() => {
+    onIncidentSelectRef.current = onIncidentSelect;
+  }, [onIncidentSelect]);
+
   const [activeBaseLayer, setActiveBaseLayer] = useState<BaseLayerId>("satellite");
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -107,34 +118,30 @@ export default function Map({
   const [showIncidents, setShowIncidents] = useState(true);
   const [showForests, setShowForests] = useState(true);
 
-  // Local state for fetched GeoJSON data
-  const [incidents, setIncidents] = useState<FeatureCollection<Geometry, IncidentProperties>>(
-    incidentsData || DEFAULT_INCIDENTS
+  // Fallback state if parent does not supply data
+  const [fallbackIncidents, setFallbackIncidents] = useState<FeatureCollection<Geometry, IncidentProperties>>(
+    DEFAULT_INCIDENTS
   );
-  const [forests, setForests] = useState<FeatureCollection<Geometry, ForestBoundaryProperties>>(
-    forestBoundariesData || DEFAULT_FOREST_BOUNDARIES
+  const [fallbackForests, setFallbackForests] = useState<FeatureCollection<Geometry, ForestBoundaryProperties>>(
+    DEFAULT_FOREST_BOUNDARIES
   );
 
-  // Update local state when props change
-  useEffect(() => {
-    if (incidentsData) {
-      setIncidents(incidentsData);
-    }
-  }, [incidentsData]);
+  const activeIncidents = incidentsData || fallbackIncidents;
+  const activeForests = forestBoundariesData || fallbackForests;
 
-  useEffect(() => {
-    if (forestBoundariesData) {
-      setForests(forestBoundariesData);
-    }
-  }, [forestBoundariesData]);
+  const incidentsRef = useRef(activeIncidents);
+  incidentsRef.current = activeIncidents;
 
-  // Fetch GeoJSON from API if not passed via props
+  const forestsRef = useRef(activeForests);
+  forestsRef.current = activeForests;
+
+  // Load fallback data only once if parent didn't provide props
   useEffect(() => {
     if (!incidentsData) {
-      fetchIncidentsGeoJSON().then((data) => setIncidents(data));
+      fetchIncidentsGeoJSON().then((data) => setFallbackIncidents(data));
     }
     if (!forestBoundariesData) {
-      fetchForestBoundariesGeoJSON().then((data) => setForests(data));
+      fetchForestBoundariesGeoJSON().then((data) => setFallbackForests(data));
     }
   }, [incidentsData, forestBoundariesData]);
 
@@ -205,13 +212,21 @@ export default function Map({
     `;
   }, []);
 
-  // Initialize Map
+  // Initialize Map ONCE on mount
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
     // Build base raster sources and layers
     const sources: Record<string, maplibregl.SourceSpecification> = {};
-    const layers: maplibregl.LayerSpecification[] = [];
+    const layers: maplibregl.LayerSpecification[] = [
+      {
+        id: "haddu-background",
+        type: "background",
+        paint: {
+          "background-color": "#090d16",
+        },
+      },
+    ];
 
     (Object.keys(BASE_LAYERS) as BaseLayerId[]).forEach((key) => {
       const cfg = BASE_LAYERS[key];
@@ -250,6 +265,8 @@ export default function Map({
       bearing: 0,
     });
 
+    mapInstanceRef.current = map;
+
     // Navigation and Scale controls
     map.addControl(
       new maplibregl.NavigationControl({
@@ -278,12 +295,13 @@ export default function Map({
     popupRef.current = popup;
 
     map.on("load", () => {
-      mapInstanceRef.current = map;
+      // Force initial size calculation
+      map.resize();
 
       // 1. Add Reserve Forest Boundaries Source & Layers
       map.addSource("forest-boundaries-source", {
         type: "geojson",
-        data: forests as unknown as GeoJSON.GeoJSON,
+        data: forestsRef.current as unknown as GeoJSON.GeoJSON,
         generateId: true,
       });
 
@@ -313,7 +331,7 @@ export default function Map({
       // 2. Add Detected Incidents Source & Layers
       map.addSource("incidents-source", {
         type: "geojson",
-        data: incidents as unknown as GeoJSON.GeoJSON,
+        data: incidentsRef.current as unknown as GeoJSON.GeoJSON,
         generateId: true,
       });
 
@@ -413,8 +431,8 @@ export default function Map({
       map.on("click", "incidents-fill", (e) => {
         if (!e.features || e.features.length === 0) return;
         const props = e.features[0].properties as unknown as IncidentProperties;
-        if (onIncidentSelect) {
-          onIncidentSelect(props);
+        if (onIncidentSelectRef.current) {
+          onIncidentSelectRef.current(props);
         }
       });
 
@@ -434,54 +452,66 @@ export default function Map({
       });
 
       setMapLoaded(true);
-      if (onMapLoad) {
-        onMapLoad(map);
+      if (onMapLoadRef.current) {
+        onMapLoadRef.current(map);
       }
     });
 
+    // ResizeObserver to ensure canvas size is always pixel-perfect and prevent black/gray gaps
+    const container = mapContainerRef.current;
+    const resizeObserver = new ResizeObserver(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.resize();
+      }
+    });
+    if (container) {
+      resizeObserver.observe(container);
+    }
+
     return () => {
+      resizeObserver.disconnect();
       popup.remove();
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, [onMapLoad, onIncidentSelect, formatIncidentTooltip, formatForestTooltip, forests, incidents]);
+  }, [formatIncidentTooltip, formatForestTooltip]);
 
-  // Update incidents data when changed
+  // Update incidents data in place without re-initializing map
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
     const source = map.getSource("incidents-source") as maplibregl.GeoJSONSource | undefined;
     if (source) {
-      source.setData(incidents as unknown as GeoJSON.GeoJSON);
+      source.setData(activeIncidents as unknown as GeoJSON.GeoJSON);
     }
-  }, [incidents, mapLoaded]);
+  }, [activeIncidents, mapLoaded]);
 
-  // Update forest boundaries data when changed
+  // Update forest boundaries data in place without re-initializing map
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
     const source = map.getSource("forest-boundaries-source") as maplibregl.GeoJSONSource | undefined;
     if (source) {
-      source.setData(forests as unknown as GeoJSON.GeoJSON);
+      source.setData(activeForests as unknown as GeoJSON.GeoJSON);
     }
-  }, [forests, mapLoaded]);
+  }, [activeForests, mapLoaded]);
 
   // Fly to selected incident if specified
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded || !selectedIncidentId) return;
 
-    const feature = incidents.features.find(
+    const feature = activeIncidents.features.find(
       (f) => String(f.properties?.id) === String(selectedIncidentId)
     );
     if (feature && feature.properties?.centroid_lon && feature.properties?.centroid_lat) {
       map.flyTo({
         center: [feature.properties.centroid_lon, feature.properties.centroid_lat],
-        zoom: 14,
+        zoom: 15,
         essential: true,
       });
     }
-  }, [selectedIncidentId, mapLoaded, incidents]);
+  }, [selectedIncidentId, mapLoaded, activeIncidents]);
 
   // Toggle incidents layer visibility
   const toggleIncidentsVisibility = () => {
@@ -553,7 +583,7 @@ export default function Map({
               <span>Legal Violation Tiers</span>
             </span>
             <span className="text-[10px] font-mono text-slate-400">
-              {incidents.features.length} alerts
+              {activeIncidents.features.length} alerts
             </span>
           </div>
 

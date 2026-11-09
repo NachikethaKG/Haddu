@@ -40,9 +40,15 @@ export default function HomePage() {
 
   // Load incidents from API or fallback
   useEffect(() => {
+    let isMounted = true;
     fetchIncidentsGeoJSON().then((data) => {
-      setAllIncidents(data);
+      if (isMounted && data && data.features) {
+        setAllIncidents(data);
+      }
     });
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Compute filtered GeoJSON features
@@ -103,6 +109,18 @@ export default function HomePage() {
     [mapInstance]
   );
 
+  const handleMapLoad = useCallback((map: MapLibreMap) => {
+    setMapInstance(map);
+  }, []);
+
+  const handleIncidentSelect = useCallback((incident: IncidentProperties) => {
+    setSelectedIncident(incident);
+  }, []);
+
+  const handleDrawerClose = useCallback(() => {
+    setSelectedIncident(null);
+  }, []);
+
   return (
     <main className="relative w-full h-full overflow-hidden">
       {/* Top Analytical Navigation Bar with KPI Stats & Filters */}
@@ -122,15 +140,15 @@ export default function HomePage() {
 
       {/* Full-viewport MapLibre GL Canvas */}
       <Map
-        onMapLoad={(map) => setMapInstance(map)}
+        onMapLoad={handleMapLoad}
         incidentsData={filteredIncidents}
         selectedIncidentId={selectedIncident?.id}
-        onIncidentSelect={(incident) => setSelectedIncident(incident)}
+        onIncidentSelect={handleIncidentSelect}
       />
 
       {/* Coordinates / Status Pill (Bottom Center) */}
-      <div className="hidden md:flex absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-full px-4 py-1.5 shadow-xl flex items-center gap-3 text-xs text-slate-300 font-mono">
+      <div className="hidden md:flex absolute bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
+        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-full px-4 py-1.5 shadow-xl flex items-center gap-3 text-xs text-slate-300 font-mono pointer-events-auto">
           <span className="flex items-center gap-1.5 text-slate-400">
             <span>AOI: Thirthahalli Taluk</span>
           </span>
@@ -144,7 +162,7 @@ export default function HomePage() {
       {/* Slide-over Incident Inspection Drawer */}
       <IncidentDrawer
         incident={selectedIncident}
-        onClose={() => setSelectedIncident(null)}
+        onClose={handleDrawerClose}
         onZoomToExtent={handleZoomToExtent}
       />
     </main>

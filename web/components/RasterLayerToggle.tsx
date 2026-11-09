@@ -82,8 +82,11 @@ export default function RasterLayerToggle({ map, className }: RasterLayerToggleP
   }, [map, isEnabled, opacity, cogUrl]);
 
   useEffect(() => {
-    if (map && map.isStyleLoaded()) {
+    if (!map) return;
+    if (map.isStyleLoaded()) {
       updateRasterLayer();
+    } else {
+      map.once("load", updateRasterLayer);
     }
   }, [map, updateRasterLayer]);
 
