@@ -1,7 +1,11 @@
 "use client";
 
+import React, { useState } from "react";
 import dynamic from "next/dynamic";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import { ShieldAlert, Radio, Compass, MapPin } from "lucide-react";
+import IncidentDrawer from "@/components/IncidentDrawer";
+import { IncidentProperties } from "@/lib/api";
 
 // Dynamic import with SSR disabled to prevent WebGL/window errors on server
 const Map = dynamic(() => import("@/components/Map"), {
@@ -15,10 +19,27 @@ const Map = dynamic(() => import("@/components/Map"), {
 });
 
 export default function HomePage() {
+  const [selectedIncident, setSelectedIncident] = useState<IncidentProperties | null>(null);
+  const [mapInstance, setMapInstance] = useState<MapLibreMap | null>(null);
+
+  const handleZoomToExtent = (lat: number, lon: number) => {
+    if (mapInstance) {
+      mapInstance.flyTo({
+        center: [lon, lat],
+        zoom: 15.5,
+        essential: true,
+      });
+    }
+  };
+
   return (
     <main className="relative w-full h-full overflow-hidden">
       {/* Full-viewport MapLibre GL Canvas */}
-      <Map />
+      <Map
+        onMapLoad={(map) => setMapInstance(map)}
+        selectedIncidentId={selectedIncident?.id}
+        onIncidentSelect={(incident) => setSelectedIncident(incident)}
+      />
 
       {/* Brand Header & Responsive Overlay Shell */}
       <header className="absolute top-4 left-4 z-10 flex items-center gap-3">
@@ -62,6 +83,13 @@ export default function HomePage() {
           </span>
         </div>
       </div>
+
+      {/* Slide-over Incident Inspection Drawer */}
+      <IncidentDrawer
+        incident={selectedIncident}
+        onClose={() => setSelectedIncident(null)}
+        onZoomToExtent={handleZoomToExtent}
+      />
     </main>
   );
 }
