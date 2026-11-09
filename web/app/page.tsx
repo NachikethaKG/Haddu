@@ -17,7 +17,7 @@ import {
 const Map = dynamic(() => import("@/components/Map"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-950 text-slate-400 gap-3">
+    <div className="w-full h-screen min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-400 gap-3">
       <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
       <p className="text-sm font-medium tracking-wide">Initializing Satellite Map Canvas...</p>
     </div>
@@ -122,7 +122,7 @@ export default function HomePage() {
   }, []);
 
   return (
-    <main className="relative w-full h-full overflow-hidden">
+    <main className="relative w-full h-screen min-h-screen overflow-hidden">
       {/* Top Analytical Navigation Bar with KPI Stats & Filters */}
       <TopBar
         totalAcres={totalClearedAcres}
@@ -140,6 +140,7 @@ export default function HomePage() {
 
       {/* Full-viewport MapLibre GL Canvas */}
       <Map
+        className="w-full h-full min-h-screen"
         onMapLoad={handleMapLoad}
         incidentsData={filteredIncidents}
         selectedIncidentId={selectedIncident?.id}

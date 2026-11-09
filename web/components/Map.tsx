@@ -297,6 +297,10 @@ export default function Map({
     map.on("load", () => {
       // Force initial size calculation
       map.resize();
+      if (typeof window !== "undefined") {
+        requestAnimationFrame(() => map.resize());
+        setTimeout(() => map.resize(), 150);
+      }
 
       // 1. Add Reserve Forest Boundaries Source & Layers
       map.addSource("forest-boundaries-source", {
@@ -459,17 +463,18 @@ export default function Map({
 
     // ResizeObserver to ensure canvas size is always pixel-perfect and prevent black/gray gaps
     const container = mapContainerRef.current;
-    const resizeObserver = new ResizeObserver(() => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.resize();
-      }
-    });
-    if (container) {
+    let resizeObserver: ResizeObserver | null = null;
+    if (container && typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.resize();
+        }
+      });
       resizeObserver.observe(container);
     }
 
     return () => {
-      resizeObserver.disconnect();
+      resizeObserver?.disconnect();
       popup.remove();
       map.remove();
       mapInstanceRef.current = null;
@@ -570,8 +575,12 @@ export default function Map({
   };
 
   return (
-    <div className={cn("relative w-full h-full overflow-hidden", className)}>
-      <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
+    <div className={cn("relative w-full h-full min-h-screen overflow-hidden", className)}>
+      <div
+        ref={mapContainerRef}
+        className="absolute inset-0 w-full h-full"
+        style={{ width: "100%", height: "100%" }}
+      />
 
       {/* Floating Map Controls & Legends (Bottom Left) */}
       <div className="absolute bottom-6 left-6 z-10 flex flex-col gap-2 max-w-xs">
