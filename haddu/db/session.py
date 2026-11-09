@@ -74,3 +74,14 @@ def init_db(target_engine: Engine | None = None) -> None:
             conn.commit()
 
     Base.metadata.create_all(bind=eng)
+
+    if eng.dialect.name == "postgresql":
+        with eng.connect() as conn:
+            conn.execute(text("""
+                ALTER TABLE encroachment_incidents ADD COLUMN IF NOT EXISTS violation_tier VARCHAR(50);
+                ALTER TABLE encroachment_incidents ADD COLUMN IF NOT EXISTS encroached_rf_name VARCHAR(255);
+                ALTER TABLE encroachment_incidents ADD COLUMN IF NOT EXISTS rf_area_acres DOUBLE PRECISION;
+                ALTER TABLE encroachment_incidents ADD COLUMN IF NOT EXISTS riparian_breach BOOLEAN DEFAULT FALSE;
+                ALTER TABLE encroachment_incidents ADD COLUMN IF NOT EXISTS sensor VARCHAR(20);
+            """))
+            conn.commit()
