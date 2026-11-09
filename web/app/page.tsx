@@ -11,7 +11,9 @@ import RasterLayerToggle from "@/components/RasterLayerToggle";
 import IncidentDrawer from "@/components/IncidentDrawer";
 import {
   IncidentProperties,
+  IncidentSummary,
   fetchIncidentsGeoJSON,
+  fetchIncidentSummary,
   DEFAULT_INCIDENTS,
 } from "@/lib/api";
 
@@ -35,6 +37,9 @@ export default function HomePage() {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
+  // Backend summary statistics
+  const [summaryData, setSummaryData] = useState<IncidentSummary | null>(null);
+
   // Raw incidents dataset
   const [allIncidents, setAllIncidents] = useState<FeatureCollection<Geometry, IncidentProperties>>(
     DEFAULT_INCIDENTS
@@ -48,10 +53,20 @@ export default function HomePage() {
         setAllIncidents(data);
       }
     });
+
+    fetchIncidentSummary().then((summary) => {
+      if (isMounted && summary) {
+        setSummaryData(summary);
+      }
+    });
+
     return () => {
       isMounted = false;
     };
   }, []);
+
+  const hasActiveFilters =
+    selectedTier !== "ALL" || startDate !== "" || endDate !== "";
 
   // Compute filtered GeoJSON features
   const filteredIncidents = useMemo<FeatureCollection<Geometry, IncidentProperties>>(() => {
@@ -83,12 +98,22 @@ export default function HomePage() {
   }, [allIncidents, selectedTier, startDate, endDate]);
 
   // Compute live KPI metrics from filtered set
-  const totalClearedAcres = useMemo(() => {
+  const filteredAcres = useMemo(() => {
     return filteredIncidents.features.reduce(
       (sum, f) => sum + Number(f.properties?.area_acres || 0),
       0
     );
   }, [filteredIncidents]);
+
+  const totalAlertsCount = summaryData?.total_incidents ?? allIncidents.features.length;
+  const globalTotalAcres = summaryData?.total_acres ?? allIncidents.features.reduce(
+    (sum, f) => sum + Number(f.properties?.area_acres || 0),
+    0
+  );
+
+  const displayedTotalAcres = hasActiveFilters
+    ? filteredAcres
+    : summaryData?.total_acres ?? filteredAcres;
 
   const activeAlertsCount = filteredIncidents.features.length;
 
@@ -150,8 +175,10 @@ export default function HomePage() {
     <main className="relative w-full h-screen min-h-screen overflow-hidden">
       {/* Top Analytical Navigation Bar with KPI Stats & Filters */}
       <TopBar
-        totalAcres={totalClearedAcres}
+        totalAcres={displayedTotalAcres}
         activeAlerts={activeAlertsCount}
+        totalAlerts={totalAlertsCount}
+        globalTotalAcres={globalTotalAcres}
         monitoredAreaKm2={1255.64}
         selectedTier={selectedTier}
         onTierChange={setSelectedTier}

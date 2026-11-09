@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ShieldAlert,
   TreePine,
@@ -9,6 +9,7 @@ import {
   Filter,
   X,
   ChevronDown,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,8 @@ export type TierFilterOption = "ALL" | "CRITICAL_ONLY" | "HIGH_PLUS_CRITICAL";
 export interface TopBarProps {
   totalAcres: number;
   activeAlerts: number;
+  totalAlerts?: number;
+  globalTotalAcres?: number;
   monitoredAreaKm2?: number;
   selectedTier: TierFilterOption;
   onTierChange: (tier: TierFilterOption) => void;
@@ -31,6 +34,8 @@ export interface TopBarProps {
 export default function TopBar({
   totalAcres,
   activeAlerts,
+  totalAlerts,
+  globalTotalAcres,
   monitoredAreaKm2 = 1255.64,
   selectedTier,
   onTierChange,
@@ -44,6 +49,9 @@ export default function TopBar({
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
   const [isDatePopoverOpen, setIsDatePopoverOpen] = useState(false);
 
+  const filterDropdownRef = useRef<HTMLDivElement>(null);
+  const datePopoverRef = useRef<HTMLDivElement>(null);
+
   const tierLabels: Record<TierFilterOption, string> = {
     ALL: "All Violations",
     CRITICAL_ONLY: "Critical Only (Reserve Forest)",
@@ -52,6 +60,33 @@ export default function TopBar({
 
   const hasActiveFilters =
     selectedTier !== "ALL" || startDate !== "" || endDate !== "";
+
+  // Click outside and Escape key listeners to dismiss popovers
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(target)) {
+        setIsFilterDropdownOpen(false);
+      }
+      if (datePopoverRef.current && !datePopoverRef.current.contains(target)) {
+        setIsDatePopoverOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsFilterDropdownOpen(false);
+        setIsDatePopoverOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   return (
     <header className="absolute top-4 inset-x-4 z-10 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
@@ -89,9 +124,14 @@ export default function TopBar({
             <div className="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
               Total Cleared
             </div>
-            <div className="text-xs font-bold font-mono text-white flex items-baseline gap-1">
+            <div className="text-xs font-bold font-mono text-white flex items-baseline gap-1.5">
               <span>{totalAcres.toFixed(1)} ac</span>
-              <span className="text-[10px] font-normal text-slate-400">
+              {hasActiveFilters && globalTotalAcres !== undefined && Math.abs(globalTotalAcres - totalAcres) > 0.05 && (
+                <span className="text-[10px] font-normal text-slate-400">
+                  / {globalTotalAcres.toFixed(1)} ac
+                </span>
+              )}
+              <span className="text-[10px] font-normal text-slate-500">
                 ({(totalAcres * 40).toFixed(0)} gt)
               </span>
             </div>
@@ -107,9 +147,14 @@ export default function TopBar({
             <div className="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
               Active Alerts
             </div>
-            <div className="text-xs font-bold font-mono text-amber-300 flex items-baseline gap-1">
+            <div className="text-xs font-bold font-mono text-amber-300 flex items-baseline gap-1.5">
               <span>{activeAlerts}</span>
-              <span className="text-[10px] font-normal text-slate-400">polygons</span>
+              {hasActiveFilters && totalAlerts !== undefined && totalAlerts !== activeAlerts && (
+                <span className="text-[10px] font-normal text-slate-400">
+                  / {totalAlerts}
+                </span>
+              )}
+              <span className="text-[10px] font-normal text-slate-500">polygons</span>
             </div>
           </div>
         </div>
@@ -132,13 +177,33 @@ export default function TopBar({
 
       {/* Filter Bar & Controls (Right) */}
       <div className="flex items-center gap-2 pointer-events-auto">
+        {/* Active Filter Indicator Badge */}
+        {hasActiveFilters && (
+          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-emerald-500/40 text-xs shadow-xl backdrop-blur-md">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-slate-300 text-[11px]">
+              Showing <strong className="text-white font-mono">{activeAlerts}</strong> of{" "}
+              <strong className="text-slate-400 font-mono">{totalAlerts ?? activeAlerts}</strong> alerts
+            </span>
+            <button
+              type="button"
+              onClick={onResetFilters}
+              className="text-[10px] font-semibold text-emerald-400 hover:text-emerald-300 hover:underline cursor-pointer flex items-center gap-0.5 ml-1"
+              title="Clear active filters"
+            >
+              <span>Reset</span>
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
         {/* Violation Tier Filter Dropdown */}
-        <div className="relative">
+        <div ref={filterDropdownRef} className="relative">
           <button
             type="button"
             onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
             className={cn(
-              "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md transition-all shadow-xl border",
+              "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md transition-all shadow-xl border cursor-pointer",
               selectedTier !== "ALL"
                 ? "bg-emerald-600/30 text-emerald-300 border-emerald-500/50"
                 : "bg-slate-900/90 text-slate-200 border-slate-700/80 hover:bg-slate-800"
@@ -151,9 +216,10 @@ export default function TopBar({
           </button>
 
           {isFilterDropdownOpen && (
-            <div className="absolute top-full mt-2 right-0 w-60 bg-slate-900/95 backdrop-blur-xl border border-slate-700/90 rounded-2xl p-1.5 shadow-2xl z-20 space-y-1">
-              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800">
-                Violation Severity
+            <div className="absolute top-full mt-2 right-0 w-64 bg-slate-900/95 backdrop-blur-xl border border-slate-700/90 rounded-2xl p-1.5 shadow-2xl z-20 space-y-1">
+              <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-800 flex items-center justify-between">
+                <span>Violation Severity</span>
+                <Sparkles className="w-3 h-3 text-emerald-400" />
               </div>
 
               {(["ALL", "CRITICAL_ONLY", "HIGH_PLUS_CRITICAL"] as TierFilterOption[]).map(
@@ -166,7 +232,7 @@ export default function TopBar({
                       setIsFilterDropdownOpen(false);
                     }}
                     className={cn(
-                      "w-full text-left px-3 py-2 rounded-lg text-xs transition-colors flex items-center justify-between",
+                      "w-full text-left px-3 py-2 rounded-lg text-xs transition-colors flex items-center justify-between cursor-pointer",
                       selectedTier === option
                         ? "bg-emerald-600/30 text-emerald-300 font-medium"
                         : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -184,12 +250,12 @@ export default function TopBar({
         </div>
 
         {/* Date Range Selector */}
-        <div className="relative">
+        <div ref={datePopoverRef} className="relative">
           <button
             type="button"
             onClick={() => setIsDatePopoverOpen((prev) => !prev)}
             className={cn(
-              "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md transition-all shadow-xl border",
+              "flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium backdrop-blur-md transition-all shadow-xl border cursor-pointer",
               startDate || endDate
                 ? "bg-cyan-600/30 text-cyan-300 border-cyan-500/50"
                 : "bg-slate-900/90 text-slate-200 border-slate-700/80 hover:bg-slate-800"
@@ -206,7 +272,7 @@ export default function TopBar({
           </button>
 
           {isDatePopoverOpen && (
-            <div className="absolute top-full mt-2 right-0 w-64 bg-slate-900/95 backdrop-blur-xl border border-slate-700/90 rounded-2xl p-4 shadow-2xl z-20 space-y-3 text-xs text-slate-200">
+            <div className="absolute top-full mt-2 right-0 w-68 bg-slate-900/95 backdrop-blur-xl border border-slate-700/90 rounded-2xl p-4 shadow-2xl z-20 space-y-3 text-xs text-slate-200">
               <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 font-semibold text-white">
                 <span className="flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-cyan-400" />
@@ -218,8 +284,9 @@ export default function TopBar({
                     onClick={() => {
                       onStartDateChange("");
                       onEndDateChange("");
+                      setIsDatePopoverOpen(false);
                     }}
-                    className="text-[10px] text-cyan-400 hover:underline"
+                    className="text-[10px] text-cyan-400 hover:underline cursor-pointer"
                   >
                     Clear Dates
                   </button>
@@ -259,7 +326,7 @@ export default function TopBar({
                     onEndDateChange("2026-03-31");
                     setIsDatePopoverOpen(false);
                   }}
-                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300"
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 cursor-pointer"
                 >
                   Dry 2026
                 </button>
@@ -270,7 +337,7 @@ export default function TopBar({
                     onEndDateChange("2026-09-30");
                     setIsDatePopoverOpen(false);
                   }}
-                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300"
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 cursor-pointer"
                 >
                   Monsoon
                 </button>
@@ -281,7 +348,7 @@ export default function TopBar({
                     onEndDateChange("");
                     setIsDatePopoverOpen(false);
                   }}
-                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300"
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-slate-300 cursor-pointer"
                 >
                   All Time
                 </button>
@@ -290,12 +357,12 @@ export default function TopBar({
           )}
         </div>
 
-        {/* Clear Filters Button (shown only when filters active) */}
+        {/* Clear Filters Button (fallback for mobile or when indicator is hidden) */}
         {hasActiveFilters && (
           <button
             type="button"
             onClick={onResetFilters}
-            className="p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700/80 transition-colors shadow-lg"
+            className="sm:hidden p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700/80 transition-colors shadow-lg cursor-pointer"
             title="Reset Filters"
           >
             <X className="w-3.5 h-3.5" />
