@@ -24,7 +24,7 @@ import { IncidentProperties, getDossierDownloadUrl } from "@/lib/api";
 export interface IncidentDrawerProps {
   incident: IncidentProperties | null;
   onClose: () => void;
-  onZoomToExtent?: (lat: number, lon: number) => void;
+  onZoomToExtent?: (lat: number, lon: number, incidentId?: string) => void;
 }
 
 export default function IncidentDrawer({
@@ -34,6 +34,8 @@ export default function IncidentDrawer({
 }: IncidentDrawerProps) {
   const [copiedId, setCopiedId] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState<"idle" | "success" | "error">("idle");
+  const [downloadFeedback, setDownloadFeedback] = useState<string>("");
 
   if (!incident) return null;
 
@@ -82,12 +84,23 @@ export default function IncidentDrawer({
     }
   };
 
+  const lat = Number(incident.centroid_lat || 13.70);
+  const lon = Number(incident.centroid_lon || 75.25);
+  const googleMapsUrl = `https://www.google.com/maps?q=${lat.toFixed(6)},${lon.toFixed(6)}`;
+
   const handleDownloadDossier = async () => {
     setIsDownloading(true);
+    setDownloadStatus("idle");
+    setDownloadFeedback("");
     const downloadUrl = getDossierDownloadUrl(incident.id);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
     try {
-      const res = await fetch(downloadUrl);
+      const res = await fetch(downloadUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       if (res.ok) {
         const blob = await res.blob();
         const blobUrl = window.URL.createObjectURL(blob);
@@ -98,18 +111,31 @@ export default function IncidentDrawer({
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(blobUrl);
+
+        setDownloadStatus("success");
+        setDownloadFeedback("Legal evidence dossier downloaded successfully.");
+        setTimeout(() => setDownloadStatus("idle"), 4000);
+      } else if (res.status === 404) {
+        setDownloadStatus("error");
+        setDownloadFeedback(
+          "Incident record not found on the server. Dossiers can only be generated for active database records."
+        );
       } else {
-        // Fallback: direct window download
-        window.open(downloadUrl, "_blank");
+        setDownloadStatus("error");
+        setDownloadFeedback(`Server returned status ${res.status}. Could not generate PDF dossier.`);
       }
-    } catch {
-      window.open(downloadUrl, "_blank");
+    } catch (err: unknown) {
+      clearTimeout(timeoutId);
+      setDownloadStatus("error");
+      if (err instanceof Error && err.name === "AbortError") {
+        setDownloadFeedback("Dossier generation timed out after 25s. Please check backend worker.");
+      } else {
+        setDownloadFeedback("Could not connect to FastAPI server at http://localhost:8000.");
+      }
     } finally {
       setIsDownloading(false);
     }
   };
-
-  const googleMapsUrl = `https://www.google.com/maps?q=${incident.centroid_lat},${incident.centroid_lon}`;
 
   return (
     <>
@@ -329,7 +355,24 @@ export default function IncidentDrawer({
         </div>
 
         {/* Action Buttons Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/70 space-y-2">
+        <div className="p-4 border-t border-slate-800 bg-slate-950/70 space-y-2.5">
+          {/* Download Feedback Banner */}
+          {downloadStatus !== "idle" && (
+            <div
+              className={cn(
+                "p-2.5 rounded-xl text-xs flex items-start gap-2 border animate-in fade-in duration-200",
+                downloadStatus === "success"
+                  ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+                  : "bg-red-500/15 border-red-500/30 text-red-300"
+              )}
+            >
+              <span className="text-sm shrink-0">
+                {downloadStatus === "success" ? "✓" : "⚠"}
+              </span>
+              <p className="leading-snug">{downloadFeedback}</p>
+            </div>
+          )}
+
           {/* Primary: Download PDF Dossier */}
           <button
             type="button"
@@ -367,7 +410,7 @@ export default function IncidentDrawer({
               type="button"
               onClick={() => {
                 if (onZoomToExtent) {
-                  onZoomToExtent(incident.centroid_lat, incident.centroid_lon);
+                  onZoomToExtent(lat, lon, incident.id);
                 }
               }}
               className={cn(

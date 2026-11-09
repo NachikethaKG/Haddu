@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { FeatureCollection, Geometry } from "geojson";
 import { AlertCircle } from "lucide-react";
+import { computeGeometryBbox } from "@/lib/utils";
 import TopBar, { TierFilterOption } from "@/components/TopBar";
 import RasterLayerToggle from "@/components/RasterLayerToggle";
 import IncidentDrawer from "@/components/IncidentDrawer";
@@ -98,16 +99,39 @@ export default function HomePage() {
   }, []);
 
   const handleZoomToExtent = useCallback(
-    (lat: number, lon: number) => {
-      if (mapInstance) {
-        mapInstance.flyTo({
-          center: [lon, lat],
-          zoom: 15.5,
-          essential: true,
-        });
+    (lat: number, lon: number, incidentId?: string) => {
+      if (!mapInstance) return;
+
+      if (incidentId) {
+        const feature = allIncidents.features.find(
+          (f) => String(f.properties?.id) === String(incidentId)
+        );
+        if (feature?.geometry) {
+          const bbox = computeGeometryBbox(feature.geometry);
+          if (bbox) {
+            mapInstance.fitBounds(
+              [
+                [bbox[0], bbox[1]],
+                [bbox[2], bbox[3]],
+              ],
+              {
+                padding: { top: 90, bottom: 80, left: 80, right: 460 },
+                maxZoom: 16.5,
+                duration: 900,
+              }
+            );
+            return;
+          }
+        }
       }
+
+      mapInstance.flyTo({
+        center: [lon, lat],
+        zoom: 15.5,
+        essential: true,
+      });
     },
-    [mapInstance]
+    [mapInstance, allIncidents]
   );
 
   const handleMapLoad = useCallback((map: MapLibreMap) => {

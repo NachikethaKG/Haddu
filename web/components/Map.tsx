@@ -15,7 +15,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, computeGeometryBbox } from "@/lib/utils";
 import {
   fetchIncidentsGeoJSON,
   fetchForestBoundariesGeoJSON,
@@ -509,9 +509,26 @@ export default function Map({
     const feature = activeIncidents.features.find(
       (f) => String(f.properties?.id) === String(selectedIncidentId)
     );
+    if (feature?.geometry) {
+      const bbox = computeGeometryBbox(feature.geometry);
+      if (bbox) {
+        map.fitBounds(
+          [
+            [bbox[0], bbox[1]],
+            [bbox[2], bbox[3]],
+          ],
+          {
+            padding: { top: 90, bottom: 80, left: 80, right: 460 },
+            maxZoom: 16.5,
+            duration: 900,
+          }
+        );
+        return;
+      }
+    }
     if (feature && feature.properties?.centroid_lon && feature.properties?.centroid_lat) {
       map.flyTo({
-        center: [feature.properties.centroid_lon, feature.properties.centroid_lat],
+        center: [Number(feature.properties.centroid_lon), Number(feature.properties.centroid_lat)],
         zoom: 15,
         essential: true,
       });
