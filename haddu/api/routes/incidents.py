@@ -163,13 +163,13 @@ def get_incidents_geojson(
             "area_acres": inc.area_acres,
             "centroid_lat": inc.centroid_lat,
             "centroid_lon": inc.centroid_lon,
-            "violation_tier": inc.violation_tier,
+            "violation_tier": inc.violation_tier or "MODERATE",
             "encroached_rf_name": inc.encroached_rf_name,
             "rf_area_acres": inc.rf_area_acres,
             "riparian_breach": bool(inc.riparian_breach),
-            "sensor": inc.sensor,
+            "sensor": inc.sensor or "Sentinel-2 MSI",
             "mean_delta_ndvi": inc.mean_delta_ndvi,
-            "confidence_score": inc.confidence_score,
+            "confidence_score": inc.confidence_score if inc.confidence_score is not None else 0.85,
             "properties": inc.properties_json,
         }
         features.append({

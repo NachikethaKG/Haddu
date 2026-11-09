@@ -332,10 +332,10 @@ export async function fetchIncidentsGeoJSON(
       throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
     const data: FeatureCollection<Geometry, IncidentProperties> = await res.json();
-    if (data.features && data.features.length > 0) {
+    if (data && Array.isArray(data.features)) {
       return data;
     }
-    return DEFAULT_INCIDENTS;
+    return { type: "FeatureCollection", features: [] };
   } catch (err) {
     console.warn("Could not fetch live incidents from API, using demo dataset:", err);
     return DEFAULT_INCIDENTS;
@@ -374,10 +374,10 @@ export async function fetchForestBoundariesGeoJSON(
       throw new Error(`API error: ${res.status} ${res.statusText}`);
     }
     const data: FeatureCollection<Geometry, ForestBoundaryProperties> = await res.json();
-    if (data.features && data.features.length > 0) {
+    if (data && Array.isArray(data.features)) {
       return data;
     }
-    return DEFAULT_FOREST_BOUNDARIES;
+    return { type: "FeatureCollection", features: [] };
   } catch (err) {
     console.warn("Could not fetch live forest boundaries from API, using default boundaries:", err);
     return DEFAULT_FOREST_BOUNDARIES;

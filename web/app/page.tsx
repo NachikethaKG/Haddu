@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { FeatureCollection, Geometry } from "geojson";
+import { AlertCircle } from "lucide-react";
 import TopBar, { TierFilterOption } from "@/components/TopBar";
 import RasterLayerToggle from "@/components/RasterLayerToggle";
 import IncidentDrawer from "@/components/IncidentDrawer";
@@ -137,6 +138,21 @@ export default function HomePage() {
         onResetFilters={handleResetFilters}
         rasterToggleSlot={<RasterLayerToggle map={mapInstance} />}
       />
+
+      {/* Empty Filter Results Notification */}
+      {filteredIncidents.features.length === 0 && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 bg-slate-900/95 backdrop-blur-md border border-slate-700/90 rounded-2xl px-5 py-3 shadow-2xl flex items-center gap-3.5 text-xs text-slate-200 animate-in fade-in slide-in-from-top-2 duration-200">
+          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>No encroachment incidents match the active filters.</span>
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="px-2.5 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 font-medium transition-colors cursor-pointer"
+          >
+            Reset Filters
+          </button>
+        </div>
+      )}
 
       {/* Full-viewport MapLibre GL Canvas */}
       <Map
